@@ -100,7 +100,7 @@ public class LeafPredicate implements Predicate {
 
     @Override
     public boolean test(long rowCount, FieldStats[] fieldStats) {
-        FieldStats stats = fieldStats[fieldIndex];
+        FieldStats stats = fieldStats[fieldIndex];  // 字段元数据
         Long nullCount = stats.nullCount();
         if (nullCount == null || rowCount != nullCount) {
             // not all null

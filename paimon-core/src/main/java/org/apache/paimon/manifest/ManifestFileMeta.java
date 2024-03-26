@@ -43,16 +43,25 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-/** Metadata of a manifest file. */
+/**
+ * Metadata of a manifest file.
+ * manifest文件的元数据，这个存储在manifest list里面
+ * */
 public class ManifestFileMeta {
 
     private static final Logger LOG = LoggerFactory.getLogger(ManifestFileMeta.class);
 
+    // 文件名
     private final String fileName;
+    // 文件大小
     private final long fileSize;
+    // 新增了多少文件
     private final long numAddedFiles;
+    // 删除了多少文件
     private final long numDeletedFiles;
+    // 分区的统计信息（最大值/最小值/空值）
     private final BinaryTableStats partitionStats;
+    // schema的id
     private final long schemaId;
 
     public ManifestFileMeta(
@@ -149,6 +158,7 @@ public class ManifestFileMeta {
         List<ManifestFileMeta> newMetas = new ArrayList<>();
 
         try {
+            // 看看能否full compaction
             Optional<List<ManifestFileMeta>> fullCompacted =
                     tryFullCompaction(
                             input,
@@ -157,6 +167,7 @@ public class ManifestFileMeta {
                             suggestedMetaSize,
                             manifestFullCompactionSize,
                             partitionType);
+            // 不行的话看看能不能做minor compaction
             return fullCompacted.orElseGet(
                     () ->
                             tryMinorCompaction(
@@ -187,15 +198,17 @@ public class ManifestFileMeta {
         for (ManifestFileMeta manifest : input) {
             totalSize += manifest.fileSize;
             candidates.add(manifest);
+            // manifest的total size每超过8MB就触发一次合并
             if (totalSize >= suggestedMetaSize) {
                 // reach suggested file size, perform merging and produce new file
                 mergeCandidates(candidates, manifestFile, result, newMetas);
-                candidates.clear();
+                candidates.clear(); // 已经触发一次合并了，清掉避免重复
                 totalSize = 0;
             }
         }
 
         // merge the last bit of manifests if there are too many
+        // 每超过30个manifest文件，就合并
         if (candidates.size() >= suggestedMinMetaCount) {
             mergeCandidates(candidates, manifestFile, result, newMetas);
         } else {
@@ -209,11 +222,14 @@ public class ManifestFileMeta {
             ManifestFile manifestFile,
             List<ManifestFileMeta> result,
             List<ManifestFileMeta> newMetas) {
+        // 只有一个，不需要合并，直接返回
         if (candidates.size() == 1) {
             result.add(candidates.get(0));
             return;
         }
 
+        // 有多个，合并后返回map
+        // 底层其实就是将相同的Identifier去重
         Map<Identifier, ManifestEntry> map = new LinkedHashMap<>();
         ManifestEntry.mergeEntries(manifestFile, candidates, map);
         if (!map.isEmpty()) {
@@ -231,6 +247,7 @@ public class ManifestFileMeta {
             long sizeTrigger,
             RowType partitionType) {
         // 1. should trigger full compaction
+        // 判断是否需要触发manifest的full compaction
 
         List<ManifestFileMeta> base = new ArrayList<>();
         int totalManifestSize = 0;
@@ -256,11 +273,13 @@ public class ManifestFileMeta {
             totalDeltaFileSize += file.fileSize();
         }
 
+        // 无需触发manifest的full compaction，默认size trigger=16MB
         if (totalDeltaFileSize < sizeTrigger) {
             return Optional.empty();
         }
 
         // 2. do full compaction
+        // 触发full compaction
 
         LOG.info(
                 "Start Manifest File Full Compaction, pick the number of delete file: {}, total manifest file size: {}",
@@ -268,7 +287,9 @@ public class ManifestFileMeta {
                 totalManifestSize);
 
         // 2.1. try to skip base files by partition filter
+        // 尝试通过partition filter去过滤掉base文件
 
+        // 将delta manifest文件合并
         Map<Identifier, ManifestEntry> deltaMerged = new LinkedHashMap<>();
         ManifestEntry.mergeEntries(manifestFile, delta, deltaMerged);
 
@@ -302,6 +323,7 @@ public class ManifestFileMeta {
         }
 
         // 2.2. try to skip base files by reading entries
+        // 尝试读取ManifestEntry过滤掉base文件
 
         Set<Identifier> deleteEntries = new HashSet<>();
         deltaMerged.forEach(
@@ -333,11 +355,15 @@ public class ManifestFileMeta {
         }
 
         // 2.3. merge base files
+        // 合并base文件
 
+        // base文件合并
         ManifestEntry.mergeEntries(manifestFile, base.subList(j, base.size()), fullMerged);
+        // 最后delta和base合并
         ManifestEntry.mergeEntries(deltaMerged.values(), fullMerged);
 
         // 2.4. write new manifest files
+        // 新建manifest文件
 
         if (!fullMerged.isEmpty()) {
             List<ManifestFileMeta> merged =

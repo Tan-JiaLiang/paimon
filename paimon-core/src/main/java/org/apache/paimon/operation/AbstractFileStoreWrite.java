@@ -71,6 +71,7 @@ public abstract class AbstractFileStoreWrite<T> implements FileStoreWrite<T> {
 
     @Nullable protected IOManager ioManager;
 
+    // partition，bucket，WriterContainer
     protected final Map<BinaryRow, Map<Integer, WriterContainer<T>>> writers;
 
     private ExecutorService lazyCompactExecutor;
@@ -125,7 +126,9 @@ public abstract class AbstractFileStoreWrite<T> implements FileStoreWrite<T> {
 
     @Override
     public void write(BinaryRow partition, int bucket, T data) throws Exception {
+        // get or create writer container
         WriterContainer<T> container = getWriterWrapper(partition, bucket);
+        // 写数据
         container.writer.write(data);
         if (container.indexMaintainer != null) {
             container.indexMaintainer.notifyNewRecord(data);
@@ -184,18 +187,23 @@ public abstract class AbstractFileStoreWrite<T> implements FileStoreWrite<T> {
 
         List<CommitMessage> result = new ArrayList<>();
 
+        // 遍历所有正在写入的分区/bucket/writer
         Iterator<Map.Entry<BinaryRow, Map<Integer, WriterContainer<T>>>> partIter =
                 writers.entrySet().iterator();
         while (partIter.hasNext()) {
             Map.Entry<BinaryRow, Map<Integer, WriterContainer<T>>> partEntry = partIter.next();
+            // partition
             BinaryRow partition = partEntry.getKey();
             Iterator<Map.Entry<Integer, WriterContainer<T>>> bucketIter =
                     partEntry.getValue().entrySet().iterator();
             while (bucketIter.hasNext()) {
                 Map.Entry<Integer, WriterContainer<T>> entry = bucketIter.next();
+                // bucket
                 int bucket = entry.getKey();
+                // writer
                 WriterContainer<T> writerContainer = entry.getValue();
 
+                // 获取本次commit的增量信息
                 CommitIncrement increment = writerContainer.writer.prepareCommit(waitCompaction);
                 List<IndexFileMeta> newIndexFiles = new ArrayList<>();
                 if (writerContainer.indexMaintainer != null) {
@@ -341,6 +349,7 @@ public abstract class AbstractFileStoreWrite<T> implements FileStoreWrite<T> {
             LOG.debug("Creating writer for partition {}, bucket {}", partition, bucket);
         }
 
+        // 批写场景下有用
         if (!isStreamingMode && writerNumber() >= writerNumberMax) {
             try {
                 forceBufferSpill();
@@ -349,18 +358,24 @@ public abstract class AbstractFileStoreWrite<T> implements FileStoreWrite<T> {
             }
         }
 
+        // 获取最近的snapshot id（这里会涉及I/O操作）
+        // 查出最近的snapshot的这个partition的这个bucket的DataFileMeta（DataFile的元数据）
+        // 将这些文件查出来，当这个writer写完之后，会用这些查出来的文件，和这次写完的文件进行compaction
         Long latestSnapshotId = snapshotManager.latestSnapshotId();
         List<DataFileMeta> restoreFiles = new ArrayList<>();
         if (!ignorePreviousFiles && latestSnapshotId != null) {
             restoreFiles = scanExistingFileMetas(latestSnapshotId, partition, bucket);
         }
+        // 索引相关，AppendOnly表为NULL
         IndexMaintainer<T> indexMaintainer =
                 indexFactory == null
                         ? null
                         : indexFactory.createOrRestore(
                                 ignorePreviousFiles ? null : latestSnapshotId, partition, bucket);
+        // 写相关
         RecordWriter<T> writer =
                 createWriter(partition.copy(), bucket, restoreFiles, null, compactExecutor());
+        // 通知新增了writer
         notifyNewWriter(writer);
         return new WriterContainer<>(writer, indexMaintainer, latestSnapshotId);
     }

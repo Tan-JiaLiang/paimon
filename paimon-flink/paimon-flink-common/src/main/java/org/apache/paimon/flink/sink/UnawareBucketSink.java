@@ -59,6 +59,7 @@ public abstract class UnawareBucketSink<T> extends FlinkWriteSink<T> {
     @Override
     public DataStream<Committable> doWrite(
             DataStream<T> input, String initialCommitUser, @Nullable Integer parallelism) {
+        // 复用父类的写逻辑
         DataStream<Committable> written = super.doWrite(input, initialCommitUser, this.parallelism);
 
         boolean enableCompaction = !table.coreOptions().writeOnly();
@@ -68,6 +69,7 @@ public abstract class UnawareBucketSink<T> extends FlinkWriteSink<T> {
                                 .get(ExecutionOptions.RUNTIME_MODE)
                         == RuntimeExecutionMode.STREAMING;
         // if enable compaction, we need to add compaction topology to this job
+        // 单独开启一个算子做compaction
         if (enableCompaction && isStreamingMode && !boundedInput) {
             // if streaming mode with bounded input, we disable compaction topology
             UnawareBucketCompactionTopoBuilder builder =

@@ -292,6 +292,7 @@ abstract class AbstractFileStoreTable implements FileStoreTable {
         CoreOptions options = coreOptions();
         Runnable snapshotExpire = null;
         if (!options.writeOnly()) {
+            // snapshot过期任务
             ExpireSnapshots expireSnapshots =
                     newExpireSnapshots()
                             .retainMax(options.snapshotNumRetainMax())
@@ -318,8 +319,10 @@ abstract class AbstractFileStoreTable implements FileStoreTable {
     }
 
     private List<CommitCallback> createCommitCallbacks() {
+        // commit后的回调方法，允许用户自定义callback，支持传入一个string的参数
         List<CommitCallback> callbacks =
                 new ArrayList<>(CallbackUtils.loadCommitCallbacks(coreOptions()));
+        // 元数据同步
         CoreOptions options = coreOptions();
         MetastoreClient.Factory metastoreClientFactory =
                 catalogEnvironment.metastoreClientFactory();
@@ -328,6 +331,7 @@ abstract class AbstractFileStoreTable implements FileStoreTable {
                 && tableSchema.partitionKeys().size() > 0) {
             callbacks.add(new AddPartitionCommitCallback(metastoreClientFactory.create()));
         }
+        // commit后是否创建tag（可以基于process-time/event-time watermark）
         TagPreview tagPreview = TagPreview.create(options);
         if (options.tagToPartitionField() != null
                 && tagPreview != null

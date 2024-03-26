@@ -358,6 +358,7 @@ public class SnapshotManager implements Serializable {
             return null;
         }
 
+        // 读取snapshot/LATEST文件，获取latest snapshot id
         Long snapshotId = readHint(LATEST);
         if (snapshotId != null) {
             long nextSnapshot = snapshotId + 1;
@@ -367,6 +368,7 @@ public class SnapshotManager implements Serializable {
             }
         }
 
+        // 如果没有LATEST文件，那么就从文件列表中找到最大的snapshot id
         return findByListFiles(Math::max);
     }
 
@@ -422,7 +424,9 @@ public class SnapshotManager implements Serializable {
     private void commitHint(long snapshotId, String fileName) throws IOException {
         Path snapshotDir = snapshotDirectory();
         Path hintFile = new Path(snapshotDir, fileName);
+        // 先删除
         fileIO.delete(hintFile, false);
+        // 再写入
         fileIO.writeFileUtf8(hintFile, String.valueOf(snapshotId));
     }
 }

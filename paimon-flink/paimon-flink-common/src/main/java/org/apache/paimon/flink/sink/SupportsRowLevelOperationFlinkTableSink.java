@@ -165,12 +165,15 @@ public abstract class SupportsRowLevelOperationFlinkTableSink extends FlinkTable
                 ((FileStoreTable) table).store().newCommit(UUID.randomUUID().toString());
         long identifier = BatchWriteBuilder.COMMIT_IDENTIFIER;
         if (deletePredicate == null) {
+            // 条件没有下推
             commit.purgeTable(identifier);
             return Optional.empty();
         } else if (deleteIsDropPartition()) {
+            // 删除整个分区
             commit.dropPartitions(Collections.singletonList(deletePartitions()), identifier);
             return Optional.empty();
         } else {
+            // 删除数据
             return Optional.of(
                     TableUtils.deleteWhere(table, Collections.singletonList(deletePredicate)));
         }

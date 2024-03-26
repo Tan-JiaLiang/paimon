@@ -99,9 +99,11 @@ public abstract class AbstractFlinkTableFactory
                 context.getConfiguration().get(ExecutionOptions.RUNTIME_MODE)
                         == RuntimeExecutionMode.STREAMING;
         if (origin instanceof SystemCatalogTable) {
+            // 系统表
             return new PushedTableSource(
                     new SystemTableSource(((SystemCatalogTable) origin).table(), isStreamingMode));
         } else {
+            // 正常的paimon表
             Table table = buildPaimonTable(context);
             if (table instanceof FileStoreTable) {
                 storeTableLineage(

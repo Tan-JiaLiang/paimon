@@ -61,6 +61,7 @@ public abstract class PrepareCommitOperator<IN, OUT> extends AbstractStreamOpera
             StreamConfig config,
             Output<StreamRecord<OUT>> output) {
         super.setup(containingTask, config, output);
+        // manged-memory内存管理
         if (options.get(SINK_USE_MANAGED_MEMORY)) {
             MemoryManager memoryManager = containingTask.getEnvironment().getMemoryManager();
             memoryAllocator = new MemorySegmentAllocator(containingTask, memoryManager);
@@ -74,6 +75,7 @@ public abstract class PrepareCommitOperator<IN, OUT> extends AbstractStreamOpera
 
     @Override
     public void prepareSnapshotPreBarrier(long checkpointId) throws Exception {
+        // 创建committable，并发送到下游算子
         if (!endOfInput) {
             emitCommittables(false, checkpointId);
         }

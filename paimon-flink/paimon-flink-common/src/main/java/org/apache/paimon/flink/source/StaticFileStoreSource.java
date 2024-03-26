@@ -77,6 +77,7 @@ public class StaticFileStoreSource extends FlinkSource {
     public SplitEnumerator<FileStoreSourceSplit, PendingSplitsCheckpoint> restoreEnumerator(
             SplitEnumeratorContext<FileStoreSourceSplit> context,
             PendingSplitsCheckpoint checkpoint) {
+        // 获取split
         Collection<FileStoreSourceSplit> splits =
                 checkpoint == null ? getSplits(context) : checkpoint.splits();
         SplitAssigner splitAssigner =
@@ -87,12 +88,14 @@ public class StaticFileStoreSource extends FlinkSource {
 
     private List<FileStoreSourceSplit> getSplits(SplitEnumeratorContext context) {
         FileStoreSourceSplitGenerator splitGenerator = new FileStoreSourceSplitGenerator();
+        // readBuilder已经将projection/filter/limit都设置了
         TableScan scan = readBuilder.newScan();
         // register scan metrics
         if (context.metricGroup() != null) {
             ((InnerTableScan) scan)
                     .withMetricsRegistry(new FlinkMetricRegistry(context.metricGroup()));
         }
+        // 读取snapshot，获取manifest entry（这里会利用stats做一些条件过滤）
         return splitGenerator.createSplits(scan.plan());
     }
 

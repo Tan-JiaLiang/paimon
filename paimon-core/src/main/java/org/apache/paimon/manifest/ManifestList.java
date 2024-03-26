@@ -36,6 +36,8 @@ import java.util.List;
 /**
  * This file includes several {@link ManifestFileMeta}, representing all data of the whole table at
  * the corresponding snapshot.
+ *
+ * Manifest List包含了多个Manifest文件
  */
 public class ManifestList extends ObjectsFile<ManifestFileMeta> {
 
@@ -64,8 +66,11 @@ public class ManifestList extends ObjectsFile<ManifestFileMeta> {
     /** Creator of {@link ManifestList}. */
     public static class Factory {
 
+        // 文件系统的读/写器
         private final FileIO fileIO;
+        // 文件格式
         private final FileFormat fileFormat;
+        // manifest list的路径
         private final FileStorePathFactory pathFactory;
         @Nullable private final SegmentsCache<String> cache;
 

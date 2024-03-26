@@ -40,7 +40,10 @@ import java.util.stream.Collectors;
 
 import static org.apache.paimon.utils.SerializationUtils.newBytesType;
 
-/** Entry of a manifest file, representing an addition / deletion of a data file. */
+/**
+ * Entry of a manifest file, representing an addition / deletion of a data file.
+ * 一个manifest entry对应一个data file，存储的是data file的元数据，一个manifest有多个manifest entry
+ */
 public class ManifestEntry {
 
     private final FileKind kind;
@@ -126,6 +129,7 @@ public class ManifestEntry {
             ManifestFile manifestFile,
             List<ManifestFileMeta> manifestFiles,
             Map<Identifier, ManifestEntry> map) {
+        // 异步读取Manifest文件
         List<CompletableFuture<List<ManifestEntry>>> manifestReadFutures =
                 manifestFiles.stream()
                         .map(
@@ -138,6 +142,7 @@ public class ManifestEntry {
                         .collect(Collectors.toList());
 
         try {
+            // 合并Manifest文件
             for (CompletableFuture<List<ManifestEntry>> taskResult : manifestReadFutures) {
                 mergeEntries(taskResult.get(), map);
             }
@@ -164,6 +169,9 @@ public class ManifestEntry {
                     // removed because there won't be further operations on this file,
                     // otherwise we have to keep the delete entry because the add entry must be
                     // in the previous manifest files
+                    // 每个数据文件只会被添加和删除一次
+                    // 如果我们知道它是在之前添加的，那么添加和删除条目都可以删除
+                    // 因为不会再对该文件进行其他操作，否则我们必须保留删除条目，因为添加条目必须在之前的清单文件中
                     if (map.containsKey(identifier)) {
                         map.remove(identifier);
                     } else {

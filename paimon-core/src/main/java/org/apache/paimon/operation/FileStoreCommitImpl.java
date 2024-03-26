@@ -209,6 +209,7 @@ public class FileStoreCommitImpl implements FileStoreCommit {
         Long safeLatestSnapshotId = null;
         List<ManifestEntry> baseEntries = new ArrayList<>();
 
+        // 获取本次commit内容的变更
         List<ManifestEntry> appendTableFiles = new ArrayList<>();
         List<ManifestEntry> appendChangelog = new ArrayList<>();
         List<ManifestEntry> compactTableFiles = new ArrayList<>();
@@ -233,17 +234,24 @@ public class FileStoreCommitImpl implements FileStoreCommit {
                 // we can skip conflict checking in tryCommit method.
                 // This optimization is mainly used to decrease the number of times we read from
                 // files.
+                // 在这里从更改的分区中读取manifest条目并检查冲突。
+                // 如果没有其他作业同时提交，我们可以跳过tryCommit方法中的冲突检查。
+                // 这种优化主要用于减少我们读取文件的次数。
                 latestSnapshot = snapshotManager.latestSnapshot();
                 if (latestSnapshot != null) {
                     // it is possible that some partitions only have compact changes,
                     // so we need to contain all changes
+                    // 本次提交涉及的分区
                     baseEntries.addAll(
                             readAllEntriesFromChangedPartitions(
                                     latestSnapshot, appendTableFiles, compactTableFiles));
+                    // 检查冲突
                     noConflictsOrFail(latestSnapshot.commitUser(), baseEntries, appendTableFiles);
+                    // 检查完毕，现在这个latestSnapshot应该是一个安全的snapshot id（相当于乐观锁的version）
                     safeLatestSnapshotId = latestSnapshot.id();
                 }
 
+                // 尝试提交snapshot
                 attempts +=
                         tryCommit(
                                 appendTableFiles,
@@ -266,6 +274,9 @@ public class FileStoreCommitImpl implements FileStoreCommit {
                 // we can skip conflict checking in tryCommit method.
                 // This optimization is mainly used to decrease the number of times we read from
                 // files.
+                // 在上面读取的manifest中添加 appendChanges，并检查是否有冲突。
+                // 如果没有其他工作同时提交，我们可以跳过 tryCommit 方法中的冲突检查。
+                // 这种优化主要用于减少从文件中读取的次数。
                 if (safeLatestSnapshotId != null) {
                     baseEntries.addAll(appendTableFiles);
                     noConflictsOrFail(latestSnapshot.commitUser(), baseEntries, compactTableFiles);
@@ -287,6 +298,7 @@ public class FileStoreCommitImpl implements FileStoreCommit {
                 generatedSnapshot += 1;
             }
         } finally {
+            // 上报commit metrics
             long commitDuration = (System.nanoTime() - started) / 1_000_000;
             if (this.commitMetrics != null) {
                 reportCommit(
@@ -600,6 +612,7 @@ public class FileStoreCommitImpl implements FileStoreCommit {
             @Nullable String statsFileName) {
         int cnt = 0;
         while (true) {
+            // 获取最近一次的snapshot
             Snapshot latestSnapshot = snapshotManager.latestSnapshot();
             cnt++;
             if (tryCommitOnce(
@@ -628,12 +641,15 @@ public class FileStoreCommitImpl implements FileStoreCommit {
             Map<Integer, Long> logOffsets) {
         int cnt = 0;
         while (true) {
+            // 读取最新snapshot
             Snapshot latestSnapshot = snapshotManager.latestSnapshot();
 
-            cnt++;
+            cnt++;  // 重试次数
             List<ManifestEntry> changesWithOverwrite = new ArrayList<>();
             List<IndexManifestEntry> indexChangesWithOverwrite = new ArrayList<>();
             if (latestSnapshot != null) {
+                // 拿出要删除partition的所有manifest entry
+                // 新增一条DELETE类型
                 List<ManifestEntry> currentEntries =
                         scan.withSnapshot(latestSnapshot)
                                 .withPartitionFilter(partitionFilter)
@@ -666,6 +682,7 @@ public class FileStoreCommitImpl implements FileStoreCommit {
             changesWithOverwrite.addAll(changes);
             indexChangesWithOverwrite.addAll(indexFiles);
 
+            // 提交snapshot
             if (tryCommitOnce(
                     changesWithOverwrite,
                     Collections.emptyList(),
@@ -695,6 +712,7 @@ public class FileStoreCommitImpl implements FileStoreCommit {
             @Nullable Snapshot latestSnapshot,
             @Nullable Long safeLatestSnapshotId,
             @Nullable String newStatsFileName) {
+        // 提交的snapshot id + 1
         long newSnapshotId =
                 latestSnapshot == null ? Snapshot.FIRST_SNAPSHOT_ID : latestSnapshot.id() + 1;
         Path newSnapshotPath = snapshotManager.snapshotPath(newSnapshotId);
@@ -710,6 +728,7 @@ public class FileStoreCommitImpl implements FileStoreCommit {
             }
         }
 
+        // 再次校验写冲突问题
         if (latestSnapshot != null && !Objects.equals(latestSnapshot.id(), safeLatestSnapshotId)) {
             // latestSnapshotId is different from the snapshot id we've checked for conflicts,
             // so we have to check again
@@ -733,6 +752,7 @@ public class FileStoreCommitImpl implements FileStoreCommit {
                 List<ManifestFileMeta> previousManifests =
                         latestSnapshot.dataManifests(manifestList);
                 // read all previous manifest files
+                // 注意：oldMetas = latest snapshot base manifest files + latest snapshot delta manifest files
                 oldMetas.addAll(previousManifests);
                 // read the last snapshot to complete the bucket's offsets when logOffsets does not
                 // contain all buckets
@@ -747,6 +767,7 @@ public class FileStoreCommitImpl implements FileStoreCommit {
                 previousIndexManifest = latestSnapshot.indexManifest();
             }
             // merge manifest files with changes
+            // 合并latest snapshot的manifest文件的元数据（base manifest）
             newMetas.addAll(
                     ManifestFileMeta.merge(
                             oldMetas,
@@ -755,6 +776,7 @@ public class FileStoreCommitImpl implements FileStoreCommit {
                             manifestMergeMinCount,
                             manifestFullCompactionSize.getBytes(),
                             partitionType));
+            // 写manifest list文件（base manifest list）
             previousChangesListName = manifestList.write(newMetas);
 
             // the added records subtract the deleted records from
@@ -763,8 +785,10 @@ public class FileStoreCommitImpl implements FileStoreCommit {
             long totalRecordCount = previousTotalRecordCount + deltaRecordCount;
 
             // write new changes into manifest files
+            // 写本次提交的manifest文件（delta manifest）
             List<ManifestFileMeta> newChangesManifests = manifestFile.write(tableFiles);
             newMetas.addAll(newChangesManifests);
+            // 写manifest list文件（delta manifest list）
             newChangesListName = manifestList.write(newChangesManifests);
 
             // write changelog into manifest files
@@ -841,9 +865,11 @@ public class FileStoreCommitImpl implements FileStoreCommit {
         try {
             Callable<Boolean> callable =
                     () -> {
+                        // 写snapshot文件（先写临时文件，再rename，其中rename是原子操作）
                         boolean committed =
                                 fileIO.writeFileUtf8(newSnapshotPath, newSnapshot.toJson());
                         if (committed) {
+                            // 更改LATEST snapshot
                             snapshotManager.commitLatestHint(newSnapshotId);
                         }
                         return committed;
@@ -893,6 +919,7 @@ public class FileStoreCommitImpl implements FileStoreCommit {
         }
 
         // atomic rename fails, clean up and try again
+        // rename原子操作失败，清理之前的manifest，然后重试
         LOG.warn(
                 String.format(
                         "Atomic commit failed for snapshot #%d (path %s) by user %s "
@@ -913,6 +940,7 @@ public class FileStoreCommitImpl implements FileStoreCommit {
     @SafeVarargs
     private final List<ManifestEntry> readAllEntriesFromChangedPartitions(
             Snapshot snapshot, List<ManifestEntry>... changes) {
+        // 获取变化的partition，读取latestSnapshot中，变化分区的所有文件
         List<BinaryRow> changedPartitions =
                 Arrays.stream(changes)
                         .flatMap(Collection::stream)

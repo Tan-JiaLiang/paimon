@@ -140,14 +140,17 @@ public class DataTableSource extends FlinkTableSource {
     public ChangelogMode getChangelogMode() {
         if (!streaming) {
             // batch merge all, return insert only
+            // 批查会合并所有数据，返回insert only
             return ChangelogMode.insertOnly();
         }
 
         if (table.primaryKeys().isEmpty()) {
+            // 没有主键肯定是insert only
             return ChangelogMode.insertOnly();
         } else {
             Options options = Options.fromMap(table.options());
 
+            // merge-engine是first-row，返回insert only
             if (new CoreOptions(options).mergeEngine() == CoreOptions.MergeEngine.FIRST_ROW) {
                 return ChangelogMode.insertOnly();
             }
@@ -178,6 +181,7 @@ public class DataTableSource extends FlinkTableSource {
                     logStoreTableFactory.createSourceProvider(context, scanContext, projectFields);
         }
 
+        // watermark策略（定义了watermark生效）
         WatermarkStrategy<RowData> watermarkStrategy = this.watermarkStrategy;
         Options options = Options.fromMap(table.options());
         if (watermarkStrategy != null) {
@@ -210,11 +214,11 @@ public class DataTableSource extends FlinkTableSource {
                 new FlinkSourceBuilder(tableIdentifier, table)
                         .withContinuousMode(streaming)
                         .withLogSourceProvider(logSourceProvider)
-                        .withProjection(projectFields)
-                        .withPredicate(predicate)
-                        .withLimit(limit)
-                        .withWatermarkStrategy(watermarkStrategy)
-                        .withDynamicPartitionFilteringFields(dynamicPartitionFilteringFields);
+                        .withProjection(projectFields)  // 字段投影下推
+                        .withPredicate(predicate)       // where条件下推
+                        .withLimit(limit)               // limit下推
+                        .withWatermarkStrategy(watermarkStrategy)   // watermark策略下推
+                        .withDynamicPartitionFilteringFields(dynamicPartitionFilteringFields);  // 动态过滤下推（譬如A.dt join B.col1，其中dt是分区键）
 
         return new PaimonDataStreamScanProvider(
                 !streaming, env -> configureSource(sourceBuilder, env));
@@ -250,6 +254,7 @@ public class DataTableSource extends FlinkTableSource {
                             options.get(FlinkConnectorOptions.INFER_SCAN_MAX_PARALLELISM));
         }
 
+        // flink source的parallelism会被改写成bucket数量（如果是bucket=-1，那么会用全局并行度读取）
         return sourceBuilder.withParallelism(parallelism).withEnv(env).build();
     }
 

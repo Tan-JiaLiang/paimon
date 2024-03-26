@@ -369,9 +369,11 @@ public class FlinkConnectorOptions {
      * Split assign mode for {@link org.apache.paimon.flink.source.StaticFileStoreSplitEnumerator}.
      */
     public enum SplitAssignMode implements DescribedEnum {
+        // split平均分配到不同的task
         FAIR(
                 "fair",
                 "Distribute splits evenly when batch reading to prevent a few tasks from reading all."),
+        // 哪个task消费得快，分配给谁
         PREEMPTIVE(
                 "preemptive",
                 "Distribute splits preemptively according to the consumption speed of the task.");

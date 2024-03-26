@@ -206,6 +206,8 @@ public interface FileIO extends Serializable {
      * Write content to one file atomically, initially writes to temp hidden file and only renames
      * to the target file once temp file is closed.
      *
+     * 先写入一个临时文件，最后再rename（原子操作）
+     *
      * @return false if target file exists
      */
     default boolean writeFileUtf8(Path path, String content) throws IOException {

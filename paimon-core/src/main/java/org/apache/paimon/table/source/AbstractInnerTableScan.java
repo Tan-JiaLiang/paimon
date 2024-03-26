@@ -99,6 +99,7 @@ public abstract class AbstractInnerTableScan implements InnerTableScan {
         }
 
         // read from consumer id
+        // 消费者组读取
         String consumerId = options.consumerId();
         if (consumerId != null && !options.consumerIgnoreProgress()) {
             ConsumerManager consumerManager = snapshotReader.consumerManager();

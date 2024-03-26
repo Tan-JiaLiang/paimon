@@ -34,15 +34,20 @@ import java.util.Map;
 import static org.apache.paimon.flink.sink.FlinkStreamPartitioner.partition;
 import static org.apache.paimon.utils.Preconditions.checkArgument;
 
-/** Builder for {@link FlinkSink}. */
+/**
+ * Builder for {@link FlinkSink}.
+ */
 public class FlinkSinkBuilder {
 
     private final FileStoreTable table;
 
     private DataStream<RowData> input;
-    @Nullable private Map<String, String> overwritePartition;
-    @Nullable private LogSinkFunction logSinkFunction;
-    @Nullable private Integer parallelism;
+    @Nullable
+    private Map<String, String> overwritePartition;
+    @Nullable
+    private LogSinkFunction logSinkFunction;
+    @Nullable
+    private Integer parallelism;
     private boolean boundedInput = false;
     private boolean compactSink = false;
 
@@ -59,8 +64,8 @@ public class FlinkSinkBuilder {
      * Whether we need to overwrite partitions.
      *
      * @param overwritePartition If we pass null, it means not overwrite. If we pass an empty map,
-     *     it means to overwrite every partition it received. If we pass a non-empty map, it means
-     *     we only overwrite the partitions match the map.
+     *                           it means to overwrite every partition it received. If we pass a non-empty map, it means
+     *                           we only overwrite the partitions match the map.
      * @return returns this.
      */
     public FlinkSinkBuilder withOverwritePartition(
@@ -90,7 +95,10 @@ public class FlinkSinkBuilder {
     }
 
     public DataStreamSink<?> build() {
+        // 将Flink的RowData转成paimon的Internal Row
         DataStream<InternalRow> input = MapToInternalRow.map(this.input, table.rowType());
+        // 如果开启了local-merge-buffer-size（默认不开启），那么就会先进行本地合并，这个在单条消息频繁更新特别有效，主要用来解决数据倾斜问题
+        // 譬如你local-merge-buffer-size配置了64MB，那么就会在这个64MB中做deduplicate，在写出去的时候只保留最后一条
         if (table.coreOptions().localMergeEnabled() && table.schema().primaryKeys().size() > 0) {
             input =
                     input.forward()
@@ -104,12 +112,14 @@ public class FlinkSinkBuilder {
         BucketMode bucketMode = table.bucketMode();
         switch (bucketMode) {
             case FIXED:
+                // 指定了bucket，且bucket > 0（适用于AppendOnly和Changelog表）
                 return buildForFixedBucket(input);
             case DYNAMIC:
                 return buildDynamicBucketSink(input, false);
             case GLOBAL_DYNAMIC:
                 return buildDynamicBucketSink(input, true);
             case UNAWARE:
+                // bucket为-1（这种模式只适用于AppendOnly）
                 return buildUnawareBucketSink(input);
             default:
                 throw new UnsupportedOperationException("Unsupported bucket mode: " + bucketMode);
@@ -123,13 +133,14 @@ public class FlinkSinkBuilder {
                 // todo support global index sort compact
                 ? new DynamicBucketCompactSink(table, overwritePartition).build(input, parallelism)
                 : globalIndex
-                        ? new GlobalDynamicBucketSink(table, overwritePartition)
-                                .build(input, parallelism)
-                        : new RowDynamicBucketSink(table, overwritePartition)
-                                .build(input, parallelism);
+                ? new GlobalDynamicBucketSink(table, overwritePartition)
+                .build(input, parallelism)
+                : new RowDynamicBucketSink(table, overwritePartition)
+                .build(input, parallelism);
     }
 
     private DataStreamSink<?> buildForFixedBucket(DataStream<InternalRow> input) {
+        // 设置分区器，将同一个bucket交给同一个并行度task（保证消费顺序）
         DataStream<InternalRow> partitioned =
                 partition(
                         input,
@@ -140,6 +151,7 @@ public class FlinkSinkBuilder {
     }
 
     private DataStreamSink<?> buildUnawareBucketSink(DataStream<InternalRow> input) {
+        // 都写入同一个bucket-0中，无需保证顺序
         checkArgument(
                 table.primaryKeys().isEmpty(),
                 "Unaware bucket mode only works with append-only table for now.");

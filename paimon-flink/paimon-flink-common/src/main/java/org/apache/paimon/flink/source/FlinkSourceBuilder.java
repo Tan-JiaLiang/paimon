@@ -218,6 +218,7 @@ public class FlinkSourceBuilder {
         }
 
         if (isContinuous) {
+            // 流读
             TableScanUtils.streamingReadingValidate(table);
 
             // TODO visit all options through CoreOptions
@@ -249,6 +250,7 @@ public class FlinkSourceBuilder {
                 }
             }
         } else {
+            // 批读
             return buildStaticFileSource();
         }
     }

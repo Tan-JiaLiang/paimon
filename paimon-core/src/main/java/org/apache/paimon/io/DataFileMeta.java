@@ -55,21 +55,30 @@ public class DataFileMeta {
     public static final BinaryRow EMPTY_MAX_KEY = EMPTY_ROW;
     public static final int DUMMY_LEVEL = 0;
 
+    // 文件名
     private final String fileName;
+    // 文件大小
     private final long fileSize;
+    // 文件行数
     private final long rowCount;
 
+    // 最大值
     private final BinaryRow minKey;
+    // 最小值
     private final BinaryRow maxKey;
+    // 主键的统计指标
     private final BinaryTableStats keyStats;
+    // 值的统计指标
     private final BinaryTableStats valueStats;
 
     private final long minSequenceNumber;
     private final long maxSequenceNumber;
     private final long schemaId;
+    // compact level
     private final int level;
 
     private final List<String> extraFiles;
+    // 创建时间
     private final Timestamp creationTime;
 
     public static DataFileMeta forAppend(

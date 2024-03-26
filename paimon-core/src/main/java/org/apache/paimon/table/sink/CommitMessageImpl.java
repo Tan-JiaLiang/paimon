@@ -43,10 +43,15 @@ public class CommitMessageImpl implements CommitMessage {
     private static final ThreadLocal<CommitMessageSerializer> CACHE =
             ThreadLocal.withInitial(CommitMessageSerializer::new);
 
+    // 提交的分区
     private transient BinaryRow partition;
+    // 提交的bucket
     private transient int bucket;
+    // 新增的文件
     private transient NewFilesIncrement newFilesIncrement;
+    // compact的文件
     private transient CompactIncrement compactIncrement;
+    // 索引文件
     private transient IndexIncrement indexIncrement;
 
     @VisibleForTesting

@@ -195,10 +195,12 @@ class PrimaryKeyFileStoreTable extends AbstractFileStoreTable {
                 createRowKeyExtractor(),
                 record -> {
                     InternalRow row = record.row();
+                    // 指定字段，生成一个sequence number，保证更新顺序
                     long sequenceNumber =
                             sequenceGenerator == null
                                     ? KeyValue.UNKNOWN_SEQUENCE
                                     : sequenceGenerator.generate(row);
+                    // 指定字段，使用其RowKind
                     RowKind rowKind =
                             rowKindGenerator == null
                                     ? row.getRowKind()

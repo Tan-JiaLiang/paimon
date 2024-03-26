@@ -98,6 +98,7 @@ public class KeyValueFileStore extends AbstractFileStore<KeyValue> {
     @Override
     public BucketMode bucketMode() {
         if (options.bucket() == -1) {
+            // crossPartitionUpdate: 主键不包含所有分区字段时为TRUE，譬如partition key有dt,hr，primary key只有dt
             return crossPartitionUpdate ? BucketMode.GLOBAL_DYNAMIC : BucketMode.DYNAMIC;
         } else {
             checkArgument(!crossPartitionUpdate);

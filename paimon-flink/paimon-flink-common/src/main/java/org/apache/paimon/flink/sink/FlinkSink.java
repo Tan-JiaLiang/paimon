@@ -95,8 +95,10 @@ public abstract class FlinkSink<T> implements Serializable {
 
             int deltaCommits = -1;
             if (options.contains(FULL_COMPACTION_DELTA_COMMITS)) {
+                // 可以使用，每做多少次commit，触发一次full compaction
                 deltaCommits = options.get(FULL_COMPACTION_DELTA_COMMITS);
             } else if (options.contains(CHANGELOG_PRODUCER_FULL_COMPACTION_TRIGGER_INTERVAL)) {
+                // 废弃了，不建议使用，每隔多少时间触发一次full compaction
                 long fullCompactionThresholdMs =
                         options.get(CHANGELOG_PRODUCER_FULL_COMPACTION_TRIGGER_INTERVAL).toMillis();
                 deltaCommits =
@@ -146,6 +148,8 @@ public abstract class FlinkSink<T> implements Serializable {
     }
 
     public DataStreamSink<?> sinkFrom(DataStream<T> input, String initialCommitUser) {
+        // 检查是否存在SinkMaterializer算子，如果存在抛出异常
+        // 因为paimon不需要这个算子
         assertNoSinkMaterializer(input);
 
         // do the actually writing action, no snapshot generated in this stage
@@ -187,6 +191,10 @@ public abstract class FlinkSink<T> implements Serializable {
                                 .get(ExecutionOptions.RUNTIME_MODE)
                         == RuntimeExecutionMode.STREAMING;
 
+        // write-only为true时，不会做compaction和snapshot过期，需要有一个专门的Compact Job去做
+        // 默认会做compaction和snapshot过期，有以下问题
+        // 1. 在当前job中做compaction会带来写性能问题，吞吐量下降
+        // 2. 会做snapshot过期，当多个writer写同一个file时，会出现写冲突，paimon会自动解决冲突，导致任务重启
         boolean writeOnly = table.coreOptions().writeOnly();
         SingleOutputStreamOperator<Committable> written =
                 input.transform(
@@ -203,6 +211,8 @@ public abstract class FlinkSink<T> implements Serializable {
             assertBatchConfiguration(env, written.getParallelism());
         }
 
+        // 分配manged-memory给sink算子
+        // managed-memory将会被用来做merge tree，可以提高sink的稳定性和性能
         Options options = Options.fromMap(table.options());
         if (options.get(SINK_USE_MANAGED_MEMORY)) {
             declareManagedMemory(written, options.get(SINK_MANAGED_WRITER_BUFFER_MEMORY));
@@ -229,6 +239,7 @@ public abstract class FlinkSink<T> implements Serializable {
                         createCommitterFactory(streamingCheckpointEnabled),
                         createCommittableStateManager());
         if (Options.fromMap(table.options()).get(SINK_AUTO_TAG_FOR_SAVEPOINT)) {
+            // savepoint时创建tag
             committerOperator =
                     new AutoTagForSavepointCommitterOperator<>(
                             (CommitterOperator<Committable, ManifestCommittable>) committerOperator,
@@ -239,6 +250,7 @@ public abstract class FlinkSink<T> implements Serializable {
         }
         if (conf.get(ExecutionOptions.RUNTIME_MODE) == RuntimeExecutionMode.BATCH
                 && table.coreOptions().tagCreationMode() == TagCreationMode.BATCH) {
+            // batch模式
             committerOperator =
                     new BatchWriteGeneratorTagOperator<>(
                             (CommitterOperator<Committable, ManifestCommittable>) committerOperator,

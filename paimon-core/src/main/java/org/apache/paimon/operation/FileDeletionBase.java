@@ -249,6 +249,7 @@ public abstract class FileDeletionBase {
 
     protected Collection<ManifestEntry> readMergedDataFiles(Snapshot snapshot) throws IOException {
         // read data manifests
+        // 将snapshot的baseManifest list和deltaManifest list下的所有manifest读出来
         List<String> files = tryReadDataManifests(snapshot);
 
         // read and merge manifest entries

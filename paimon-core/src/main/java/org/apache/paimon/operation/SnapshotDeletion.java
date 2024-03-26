@@ -67,6 +67,7 @@ public class SnapshotDeletion extends FileDeletionBase {
     @Override
     public void cleanUnusedDataFiles(Snapshot snapshot, Predicate<ManifestEntry> skipper) {
         // try read manifests
+        // 读到delta manifest的文件名
         List<String> manifestFileNames =
                 readManifestFileNames(tryReadManifestList(snapshot.deltaManifestList()));
         List<ManifestEntry> manifestEntries = new ArrayList<>();
@@ -74,6 +75,7 @@ public class SnapshotDeletion extends FileDeletionBase {
         Map<Path, Pair<ManifestEntry, List<Path>>> dataFileToDelete = new HashMap<>();
         for (String manifest : manifestFileNames) {
             try {
+                // 读取整个manifest文件内容
                 manifestEntries = manifestFile.read(manifest);
             } catch (Exception e) {
                 // cancel deletion if any exception occurs
@@ -81,9 +83,11 @@ public class SnapshotDeletion extends FileDeletionBase {
                 return;
             }
 
+            // 获取被标记为删除的DataFile
             getDataFileToDelete(dataFileToDelete, manifestEntries);
         }
 
+        // 清理DataFile
         doCleanUnusedDataFile(dataFileToDelete, skipper);
     }
 
@@ -134,6 +138,7 @@ public class SnapshotDeletion extends FileDeletionBase {
                         recordDeletionBuckets(entry);
                     }
                 });
+        // 阻塞多线程物理删除DataFile
         deleteFiles(actualDataFileToDelete, fileIO::deleteQuietly);
     }
 

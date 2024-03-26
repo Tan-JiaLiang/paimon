@@ -46,6 +46,13 @@ import java.util.Optional;
 /**
  * This file is the entrance to all data committed at some specific time point.
  *
+ * 该文件是某个特定时间点提交的所有数据的入口
+ *
+ * 下面是不同版本paimon的snapshot变化
+ * 1. version 1：paimon <= 0.2，没有version字段
+ * 2. version 2：paimon 0.3，新增了version和changelogManifestList字段
+ * 3. version 3：paimon 0.4，新增了baseRecordCount、deltaRecordCount和changelogRecordCount字段
+ *
  * <p>Versioned change list:
  *
  * <ul>
@@ -91,6 +98,7 @@ public class Snapshot {
 
     // version of snapshot
     // null for paimon <= 0.2
+    // snapshot版本号，Snapshot类每变化一次，就会version+1
     @JsonProperty(FIELD_VERSION)
     @Nullable
     private final Integer version;
@@ -102,26 +110,31 @@ public class Snapshot {
     private final long schemaId;
 
     // a manifest list recording all changes from the previous snapshots
+    // snapshot基础的manifest列表（上一次的manifest列表）
     @JsonProperty(FIELD_BASE_MANIFEST_LIST)
     private final String baseManifestList;
 
     // a manifest list recording all new changes occurred in this snapshot
     // for faster expire and streaming reads
+    // snapshot增量的manifest列表（本次新增的manifest列表）
     @JsonProperty(FIELD_DELTA_MANIFEST_LIST)
     private final String deltaManifestList;
 
     // a manifest list recording all changelog produced in this snapshot
     // null if no changelog is produced, or for paimon <= 0.2
+    // changelog的manifest列表
     @JsonProperty(FIELD_CHANGELOG_MANIFEST_LIST)
     @Nullable
     private final String changelogManifestList;
 
     // a manifest recording all index files of this table
     // null if no index file
+    // 索引的manifest
     @JsonProperty(FIELD_INDEX_MANIFEST)
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private final String indexManifest;
 
+    // commitUser，用来解决冲突问题
     @JsonProperty(FIELD_COMMIT_USER)
     private final String commitUser;
 
@@ -132,32 +145,46 @@ public class Snapshot {
     //
     // If snapshot A has a smaller commitIdentifier than snapshot B, then snapshot A must be
     // committed before snapshot B, and thus snapshot A must contain older records than snapshot B.
+    // 主要用于快照重复数据删除
+    // 如果多个快照具有相同的 commitIdentifier，那么从其中任何一个快照读取都必须生成相同的表。
+    // 如果快照 A 的 commitIdentifier 小于快照 B，那么快照 A 必须在快照 B 之前提交，因此快照 A 必须比快照 B 包含更早的记录。
     @JsonProperty(FIELD_COMMIT_IDENTIFIER)
     private final long commitIdentifier;
 
+    // 提交类型，有APPEND/COMPACT/OVERWRITE/ANALYZE四种
+    // APPEND：追加数据
+    // COMPACT：合并数据
+    // OVERWRITE：重写数据
+    // ANALYZE：收集指标
     @JsonProperty(FIELD_COMMIT_KIND)
     private final CommitKind commitKind;
 
+    // 提交的时间
     @JsonProperty(FIELD_TIME_MILLIS)
     private final long timeMillis;
 
+    // key是bucket id，value是log offset
+    // 譬如外部存储是kafka，那么value就是kafka的offset
     @JsonProperty(FIELD_LOG_OFFSETS)
     private final Map<Integer, Long> logOffsets;
 
     // record count of all changes occurred in this snapshot
     // null for paimon <= 0.3
+    // 总行数
     @JsonProperty(FIELD_TOTAL_RECORD_COUNT)
     @Nullable
     private final Long totalRecordCount;
 
     // record count of all new changes occurred in this snapshot
     // null for paimon <= 0.3
+    // 本次snapshot新增行数
     @JsonProperty(FIELD_DELTA_RECORD_COUNT)
     @Nullable
     private final Long deltaRecordCount;
 
     // record count of all changelog produced in this snapshot
     // null for paimon <= 0.3
+    // changelog的行数
     @JsonProperty(FIELD_CHANGELOG_RECORD_COUNT)
     @Nullable
     private final Long changelogRecordCount;
@@ -166,12 +193,14 @@ public class Snapshot {
     // null for paimon <= 0.3
     // null if there is no watermark in new committing, and the previous snapshot does not have a
     // watermark
+    // 输入记录的watermark
     @JsonProperty(FIELD_WATERMARK)
     @Nullable
     private final Long watermark;
 
     // stats file name for statistics of this table
     // null if no stats file
+    // 统计该表统计数据的文件名
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonProperty(FIELD_STATISTICS)
     @Nullable

@@ -115,6 +115,7 @@ public class TableCommitImpl implements InnerTableCommit {
         this.consumerExpireTime = consumerExpireTime;
         this.consumerManager = consumerManager;
 
+        // 默认是使用当前线程执行
         this.expireMainExecutor =
                 expireExecutionMode == ExpireExecutionMode.SYNC
                         ? MoreExecutors.newDirectExecutorService()
@@ -188,9 +189,12 @@ public class TableCommitImpl implements InnerTableCommit {
 
     public void commitMultiple(List<ManifestCommittable> committables) {
         if (overwritePartition == null) {
+            // 逐一提交
             for (ManifestCommittable committable : committables) {
                 commit.commit(committable, new HashMap<>());
             }
+            // 过期snapshot
+            // 线程池有SYNC（默认）和ASYNC区分，SYNC使用当前线程执行，ASYNC使用线程池执行
             if (!committables.isEmpty()) {
                 expire(committables.get(committables.size() - 1).identifier(), expireMainExecutor);
             }
@@ -212,6 +216,7 @@ public class TableCommitImpl implements InnerTableCommit {
             expire(committable.identifier(), expireMainExecutor);
         }
 
+        // commit完成的回调方法
         commitCallbacks.forEach(c -> c.call(committables));
     }
 
@@ -329,10 +334,13 @@ public class TableCommitImpl implements InnerTableCommit {
 
     private void expire(long partitionExpireIdentifier) {
         // expire consumer first to avoid preventing snapshot expiration
+        // 先过期Consumer，避免阻止快照过期
+        // consumerExpireTime默认值为NULL
         if (consumerExpireTime != null) {
             consumerManager.expire(LocalDateTime.now().minus(consumerExpireTime));
         }
 
+        // snapshot过期
         expireSnapshots();
 
         if (partitionExpire != null) {

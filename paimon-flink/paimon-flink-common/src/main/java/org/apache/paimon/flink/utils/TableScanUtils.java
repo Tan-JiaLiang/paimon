@@ -41,6 +41,7 @@ public class TableScanUtils {
                         put(CoreOptions.MergeEngine.FIRST_ROW, "First row");
                     }
                 };
+        // 主键表流读，是必须读changelog的，如果非主键表，那么忽略
         if (table.primaryKeys().size() > 0 && mergeEngineDesc.containsKey(mergeEngine)) {
             if (options.changelogProducer() == CoreOptions.ChangelogProducer.NONE) {
                 throw new RuntimeException(

@@ -82,6 +82,7 @@ public class FileStoreSourceSplitReader
 
     @Override
     public RecordsWithSplitIds<BulkFormat.RecordIterator<RowData>> fetch() throws IOException {
+        // 任务暂停
         if (paused) {
             return new RecordsWithPausedSplit<>();
         }

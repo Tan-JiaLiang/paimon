@@ -107,9 +107,14 @@ public class AppendOnlyCompactManager extends CompactFutureManager {
         if (taskFuture != null) {
             return;
         }
+        // 选择需要compact的文件，创建一个compact task提交到线程池中去异步执行
         Optional<List<DataFileMeta>> picked = pickCompactBefore();
         if (picked.isPresent()) {
             compacting = picked.get();
+            // 提交compact task，关注AutoCompactTask的call方法
+            // AutoCompactTask是AppendOnlyCompactManager专用的compact方法
+            // 单纯地将需要compact的文件读出来，然后通过writer往一个文件去写，写的过程中去判断这个文件是否达到了128MB
+            // 达到了就rolling new file
             taskFuture = executor.submit(new AutoCompactTask(compacting, rewriter, metrics));
         }
     }
@@ -161,6 +166,7 @@ public class AppendOnlyCompactManager extends CompactFutureManager {
 
     @VisibleForTesting
     Optional<List<DataFileMeta>> pickCompactBefore() {
+        // toCompact是这一次flush操作的文件
         if (toCompact.isEmpty()) {
             return Optional.empty();
         }
@@ -176,8 +182,14 @@ public class AppendOnlyCompactManager extends CompactFutureManager {
             fileNum++;
             if ((totalFileSize >= targetFileSize && fileNum >= minFileNum)
                     || fileNum >= maxFileNum) {
+                // targetFileSize默认128MB，minFileNum默认5，maxFileNum默认50
+                // 只有文件size达到128MB且minFileNum达到5
+                // 或者maxFileNum达到50才触发一次compaction
+                // 要注意的是，譬如有10个文件需要compact，但是6个文件就达到了128MB了，那么剩下的4个会等下一次再做compact
                 return Optional.of(candidates);
             } else if (totalFileSize >= targetFileSize) {
+                // 这种情况判定它不是小文件，虽然total文件已经达到了128MB，但是minFileNum还是没有达到5，所以觉得它是一个大文件
+                // 至少它有32MB以上，实际上它会更大，因为我们是几乎写满一个128MB才滚动生成一个文件的
                 // let pointer shift one pos to right
                 DataFileMeta removed = candidates.pollFirst();
                 assert removed != null;
@@ -222,6 +234,7 @@ public class AppendOnlyCompactManager extends CompactFutureManager {
         @Override
         protected CompactResult doCompact() throws Exception {
             // remove large files
+            // 剔除一部分文件大小超过128MB的，因为在队头的文件一般都是满128MB的
             while (!inputs.isEmpty()) {
                 DataFileMeta file = inputs.peekFirst();
                 if (file.fileSize() >= targetFileSize) {
@@ -232,8 +245,8 @@ public class AppendOnlyCompactManager extends CompactFutureManager {
             }
 
             // compute small files
-            int big = 0;
-            int small = 0;
+            int big = 0;    // 比128MB大的
+            int small = 0;  // 比128MB小的
             for (DataFileMeta file : inputs) {
                 if (file.fileSize() >= targetFileSize) {
                     big++;
@@ -243,6 +256,7 @@ public class AppendOnlyCompactManager extends CompactFutureManager {
             }
 
             // do compaction
+            // 当小文件比大文件要多，且文件数量大于等于3时，进行一次compaction
             List<DataFileMeta> compactBefore = new ArrayList<>();
             List<DataFileMeta> compactAfter = new ArrayList<>();
             if (small > big && inputs.size() >= FULL_COMPACT_MIN_FILE) {

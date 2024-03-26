@@ -67,6 +67,8 @@ public class RollingFileWriter<T, R> implements FileWriter<T, List<R>> {
 
     @VisibleForTesting
     boolean rollingFile() throws IOException {
+        // 是否滚动生成一个file文件
+        // 每写入1000条记录check一次
         return currentWriter.reachTargetSize(
                 recordCount % CHECK_ROLLING_RECORD_CNT == 0, targetFileSize);
     }
@@ -79,9 +81,11 @@ public class RollingFileWriter<T, R> implements FileWriter<T, List<R>> {
                 openCurrentWriter();
             }
 
+            // 往writer写入一条记录
             currentWriter.write(row);
             recordCount += 1;
 
+            // 判断是否可以滚动生成一个新的文件去写
             if (rollingFile()) {
                 closeCurrentWriter();
             }
@@ -105,6 +109,7 @@ public class RollingFileWriter<T, R> implements FileWriter<T, List<R>> {
             return;
         }
 
+        // 关闭writer
         currentWriter.close();
         // only store abort executor in memory
         // cannot store whole writer, it includes lots of memory for example column vectors to read

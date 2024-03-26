@@ -115,6 +115,7 @@ public class AppendOnlyFileStoreWrite extends MemoryFileStoreWrite<InternalRow> 
         // and make restore files mutable to update
         long maxSequenceNumber = getMaxSequenceNumber(restoredFiles);
         DataFilePathFactory factory = pathFactory.createDataFilePathFactory(partition, bucket);
+        // compaction相关
         CompactManager compactManager =
                 skipCompaction
                         ? new NoopCompactManager()
@@ -164,6 +165,8 @@ public class AppendOnlyFileStoreWrite extends MemoryFileStoreWrite<InternalRow> 
                             fileCompression,
                             statsCollectors);
             try {
+                // 将待compact的文件封装成一个split迭代器
+                // 不断地遍历迭代器的split，rewriter不断地往文件写入数据，中间会判断是否需要rolling new file
                 rewriter.write(
                         new RecordReaderIterator<>(
                                 read.createReader(

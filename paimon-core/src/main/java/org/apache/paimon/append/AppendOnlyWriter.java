@@ -128,9 +128,13 @@ public class AppendOnlyWriter implements RecordWriter<InternalRow>, MemoryOwner 
                 rowData.getRowKind() == RowKind.INSERT,
                 "Append-only writer can only accept insert row kind, but current row kind is: %s",
                 rowData.getRowKind());
+        // 写入一条数据到写缓存中
         boolean success = sinkWriter.write(rowData);
         if (!success) {
+            // 写不成功，说明写缓存满了
+            // 做flush操作，将写缓存写入磁盘中
             flush(false, false);
+            // 重新再写
             success = sinkWriter.write(rowData);
             if (!success) {
                 // Should not get here, because writeBuffer will throw too big exception out.
@@ -163,8 +167,11 @@ public class AppendOnlyWriter implements RecordWriter<InternalRow>, MemoryOwner 
     @Override
     public CommitIncrement prepareCommit(boolean waitCompaction) throws Exception {
         long start = System.currentTimeMillis();
+        // 将write buffer的数据刷写到磁盘，触发compaction
         flush(false, false);
+        // compaction（如果传入true，则等待compaction完成）
         trySyncLatestCompaction(waitCompaction || forceCompact);
+        // 获取commit的增量信息（新增的文件，compact前和compact后的文件）
         CommitIncrement increment = drainIncrement();
         if (writerMetrics != null) {
             writerMetrics.updatePrepareCommitCostMillis(System.currentTimeMillis() - start);
@@ -178,8 +185,11 @@ public class AppendOnlyWriter implements RecordWriter<InternalRow>, MemoryOwner 
         List<DataFileMeta> flushedFiles = sinkWriter.flush();
 
         // add new generated files
+        // 将写完成的文件加入到compactManager中，等待compact操作
         flushedFiles.forEach(compactManager::addNewFile);
+        // 看看上一次的compaction是否已经完成（是否需要等待）
         trySyncLatestCompaction(waitForLatestCompaction);
+        // 触发compaction
         compactManager.triggerCompaction(forcedFullCompaction);
         newFiles.addAll(flushedFiles);
         if (writerMetrics != null) {
@@ -247,8 +257,12 @@ public class AppendOnlyWriter implements RecordWriter<InternalRow>, MemoryOwner 
     }
 
     private CommitIncrement drainIncrement() {
+        // new files是本次checkpoint interval中，writer新写入的文件
         NewFilesIncrement newFilesIncrement =
                 new NewFilesIncrement(new ArrayList<>(newFiles), Collections.emptyList());
+        // 本次checkpoint interval会不断地触发compaction（每flush一次都会判断）
+        // compact before是合并前的文件
+        // compact after是合并后的文件
         CompactIncrement compactIncrement =
                 new CompactIncrement(
                         new ArrayList<>(compactBefore),

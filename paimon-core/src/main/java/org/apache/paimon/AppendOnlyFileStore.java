@@ -64,6 +64,8 @@ public class AppendOnlyFileStore extends AbstractFileStore<InternalRow> {
 
     @Override
     public BucketMode bucketMode() {
+        // 默认是-1，使用BucketMode.UNAWARE
+        // BucketMode.UNAWARE只适用于AppendOnly表，数据会随机写入表中，bucket中的数据是无序的
         return options.bucket() == -1 ? BucketMode.UNAWARE : BucketMode.FIXED;
     }
 

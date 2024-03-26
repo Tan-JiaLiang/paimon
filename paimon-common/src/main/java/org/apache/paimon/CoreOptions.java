@@ -1651,6 +1651,9 @@ public class CoreOptions implements Serializable {
 
     /** Specifies the startup mode for log consumer. */
     public enum StartupMode implements DescribedEnum {
+        //  1. 当你设置了scan.timestamp-millis，那么scan.mode=from-timestamp
+        //  2. 当你设置了scan.snapshot-id或者scan.tag-name，则是scan.mode=from-snapshot
+        //  3. 如果都没有设置，则默认latest-full
         DEFAULT(
                 "default",
                 "Determines actual startup mode according to other table properties. "
@@ -1658,20 +1661,27 @@ public class CoreOptions implements Serializable {
                         + "and if \"scan.snapshot-id\" or \"scan.tag-name\" is set the actual startup mode will be \"from-snapshot\". "
                         + "Otherwise the actual startup mode will be \"latest-full\"."),
 
+        //  1. 流读，读取最近的snapshot全量数据，然后持续增量读取snapshot，（存量+增量）
+        //  2. 批读，只读取最近的snapshot（存量）
         LATEST_FULL(
                 "latest-full",
                 "For streaming sources, produces the latest snapshot on the table upon first startup, "
                         + "and continue to read the latest changes. "
                         + "For batch sources, just produce the latest snapshot but does not read new changes."),
 
+        // 忽略，不再使用
         FULL("full", "Deprecated. Same as \"latest-full\"."),
 
+        //  1. 流读，持续增量读取snapshot（只读增量）
+        //  2. 批读，效果与latest-full一致，只读取最近的snapshot（存量）
         LATEST(
                 "latest",
                 "For streaming sources, continuously reads latest changes "
                         + "without producing a snapshot at the beginning. "
                         + "For batch sources, behaves the same as the \"latest-full\" startup mode."),
 
+        //  1. 流读：读取最近一次compaction快照，然后读取增量快照（存量+增量）
+        //  2. 批读：只读取最近一次compaction快照（存量）
         COMPACTED_FULL(
                 "compacted-full",
                 "For streaming sources, produces a snapshot after the latest compaction on the table "
@@ -1680,6 +1690,8 @@ public class CoreOptions implements Serializable {
                         + "but does not read new changes. Snapshots of full compaction are picked "
                         + "when scheduled full-compaction is enabled."),
 
+        //  1. 流读，通过时间戳查找snapshot，然后持续增来读取snapshot（只读增量）
+        //  2. 批读，通过时间戳查找snapshot（存量）
         FROM_TIMESTAMP(
                 "from-timestamp",
                 "For streaming sources, continuously reads changes "
@@ -1688,11 +1700,15 @@ public class CoreOptions implements Serializable {
                         + "For batch sources, produces a snapshot at timestamp specified by \"scan.timestamp-millis\" "
                         + "but does not read new changes."),
 
+        // 1. 流读，读取比这个creation-time小的data file，然后增量读
+        // 2. 批读，读取比这个creation-time小的data file
         FROM_FILE_CREATION_TIME(
                 "from-file-creation-time",
                 "For streaming and batch sources, produces a snapshot and filters the data files by creation time. "
                         + "For streaming sources, upon first startup, and continue to read the latest changes."),
 
+        //  1. 流读：指定snapshot进行增量读取snapshot（只读增量）
+        //  2. 批读：读取指定snapshot全量数据（存量）
         FROM_SNAPSHOT(
                 "from-snapshot",
                 "For streaming sources, continuously reads changes starting from snapshot "
@@ -1700,12 +1716,16 @@ public class CoreOptions implements Serializable {
                         + "For batch sources, produces a snapshot specified by \"scan.snapshot-id\" "
                         + "or \"scan.tag-name\" but does not read new changes."),
 
+        //  1. 流读：指定snapshot进行全量读，然后再增量读（存量+增量）
+        //  2. 批读：读取指定snapshot全量数据（存量）
         FROM_SNAPSHOT_FULL(
                 "from-snapshot-full",
                 "For streaming sources, produces from snapshot specified by \"scan.snapshot-id\" "
                         + "on the table upon first startup, and continuously reads changes. For batch sources, "
                         + "produces a snapshot specified by \"scan.snapshot-id\" but does not read new changes."),
 
+        //  1. 流读：读这个区间内的增量数据
+        //  2. 批读：不支持批读
         INCREMENTAL(
                 "incremental",
                 "Read incremental changes between start and end snapshot or timestamp.");

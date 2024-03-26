@@ -209,6 +209,7 @@ public abstract class AbstractFileStoreScan implements FileStoreScan {
     @Override
     public Plan plan() {
 
+        // 读snapshot，拿到manifest entry，并做一些stats的过滤
         Pair<Snapshot, List<ManifestEntry>> planResult = doPlan(this::readManifestFileMeta);
 
         final Snapshot readSnapshot = planResult.getLeft();
@@ -252,21 +253,30 @@ public abstract class AbstractFileStoreScan implements FileStoreScan {
             if (snapshot == null) {
                 manifests = Collections.emptyList();
             } else {
+                // 读取manifest list
                 manifests = readManifests(snapshot);
             }
         }
 
+        // data file总数
         long startDataFiles =
                 manifests.stream().mapToLong(f -> f.numAddedFiles() + f.numDeletedFiles()).sum();
 
+        // 读取manifest-list指向的所有manifest文件，并且做一些过滤
         AtomicLong cntEntries = new AtomicLong(0);
         Iterable<ManifestEntry> entries =
                 ScanParallelExecutor.parallelismBatchIterable(
                         files -> {
+                            // files变量是snapshot的manifest文件的元数据
+                            // 过滤掉一些manifest文件
+                            //
                             List<ManifestEntry> entryList =
                                     files.parallelStream()
+                                            // 通过partition filter过滤掉一些manifest文件
                                             .filter(this::filterManifestFileMeta)
+                                            // 将manifest文件（里面是一堆manifest entry）读出来，并且过滤掉一些manifest entry
                                             .flatMap(m -> readManifest.apply(m).stream())
+                                            // 通过字段stats过滤掉一些manifest entry
                                             .filter(this::filterUnmergedManifestEntry)
                                             .collect(Collectors.toList());
                             cntEntries.getAndAdd(entryList.size());
@@ -275,6 +285,7 @@ public abstract class AbstractFileStoreScan implements FileStoreScan {
                         manifests,
                         scanManifestParallelism);
 
+        // 合并manifest entry
         List<ManifestEntry> files = new ArrayList<>();
         Collection<ManifestEntry> mergedEntries = ManifestEntry.mergeEntries(entries);
         long skippedByPartitionAndStats = startDataFiles - cntEntries.get();
@@ -302,6 +313,7 @@ public abstract class AbstractFileStoreScan implements FileStoreScan {
             // however entry.bucket() was computed against the old numOfBuckets
             // and thus the filtered manifest entries might be empty
             // which renders the bucket check invalid
+            // 过滤manifest entry
             if (filterMergedManifestEntry(file)) {
                 files.add(file);
             }
@@ -313,6 +325,8 @@ public abstract class AbstractFileStoreScan implements FileStoreScan {
         // Why do this: because in primary key table, we can't just filter the value
         // by the stat in files (see `PrimaryKeyFileStoreTable.nonPartitionFilterConsumer`),
         // but we can do this by filter the whole bucket files
+        // primary key表注意，这里会过滤掉一些manifest entry
+        // append only表可以忽略
         files =
                 files.stream()
                         .collect(
@@ -412,6 +426,8 @@ public abstract class AbstractFileStoreScan implements FileStoreScan {
     private List<ManifestEntry> readManifestFileMeta(ManifestFileMeta manifest) {
         return manifestFileFactory
                 .create()
+                // manifestCacheRowFilter只用来过滤缓存
+                // manifestEntryRowFilter用来过滤真实文件
                 .read(manifest.fileName(), manifestCacheRowFilter(), manifestEntryRowFilter());
     }
 
@@ -423,10 +439,12 @@ public abstract class AbstractFileStoreScan implements FileStoreScan {
         Function<InternalRow, Integer> totalBucketGetter =
                 ManifestEntrySerializer.totalBucketGetter();
         return row -> {
+            // 是否命中分区
             if ((partitionFilter != null && !partitionFilter.test(partitionGetter.apply(row)))) {
                 return false;
             }
 
+            // 是否命中bucket
             if (bucketFilter != null && numOfBuckets == totalBucketGetter.apply(row)) {
                 return bucketFilter.test(bucketGetter.apply(row));
             }

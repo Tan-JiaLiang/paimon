@@ -108,6 +108,7 @@ public class CommitterOperator<CommitT, GlobalCommitT> extends AbstractStreamOpe
         // parallelism of commit operator is always 1, so commitUser will never be null
         committer = committerFactory.create(commitUser, getMetricGroup());
 
+        // 恢复状态，恢复状态可能会继续完成上一次未完成的事务
         committableStateManager.initializeState(context, committer);
     }
 
@@ -127,7 +128,9 @@ public class CommitterOperator<CommitT, GlobalCommitT> extends AbstractStreamOpe
     @Override
     public void snapshotState(StateSnapshotContext context) throws Exception {
         super.snapshotState(context);
+        // 将inputs放入committablesPerCheckpoint中
         pollInputs();
+        // 将committablesPerCheckpoint存入状态中去
         committableStateManager.snapshotState(context, committables(committablesPerCheckpoint));
     }
 
@@ -149,16 +152,20 @@ public class CommitterOperator<CommitT, GlobalCommitT> extends AbstractStreamOpe
     @Override
     public void notifyCheckpointComplete(long checkpointId) throws Exception {
         super.notifyCheckpointComplete(checkpointId);
+        // 将committablesPerCheckpoint中的committables逐一提交
         commitUpToCheckpoint(endInput ? Long.MAX_VALUE : checkpointId);
     }
 
     private void commitUpToCheckpoint(long checkpointId) throws Exception {
+        // 找出小于等于当前checkpointId的committables
+        // 提交事务
         NavigableMap<Long, GlobalCommitT> headMap =
                 committablesPerCheckpoint.headMap(checkpointId, true);
         List<GlobalCommitT> committables = committables(headMap);
         committer.commit(committables);
         headMap.clear();
 
+        // 创建tag
         if (committables.isEmpty()) {
             if (committer.forceCreatingSnapshot()) {
                 GlobalCommitT commit = toCommittables(checkpointId, Collections.emptyList());
@@ -170,6 +177,7 @@ public class CommitterOperator<CommitT, GlobalCommitT> extends AbstractStreamOpe
     @Override
     public void processElement(StreamRecord<CommitT> element) {
         output.collect(element);
+        // 提交的事务，在checkpoint barrier之前收到
         this.inputs.add(element.getValue());
     }
 
@@ -188,6 +196,7 @@ public class CommitterOperator<CommitT, GlobalCommitT> extends AbstractStreamOpe
     }
 
     private void pollInputs() throws Exception {
+        // key是checkpointId，value是要提交的事务集合
         Map<Long, List<CommitT>> grouped = committer.groupByCheckpoint(inputs);
 
         for (Map.Entry<Long, List<CommitT>> entry : grouped.entrySet()) {

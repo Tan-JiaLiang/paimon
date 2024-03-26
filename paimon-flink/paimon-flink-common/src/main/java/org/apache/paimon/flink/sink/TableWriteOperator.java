@@ -63,6 +63,8 @@ public abstract class TableWriteOperator<IN> extends PrepareCommitOperator<IN, C
                 StateUtils.getSingleValueFromState(
                         context, "commit_user_state", String.class, initialCommitUser);
 
+        // 这个StateValueFilter就是用来分配bucket的
+        // 让bucket均匀地分配到不同的task中去
         boolean containLogSystem = containLogSystem();
         int numTasks = getRuntimeContext().getNumberOfParallelSubtasks();
         StateValueFilter stateFilter =
@@ -118,6 +120,7 @@ public abstract class TableWriteOperator<IN> extends PrepareCommitOperator<IN, C
     @Override
     protected List<Committable> prepareCommit(boolean waitCompaction, long checkpointId)
             throws IOException {
+        // 创建Committable
         return write.prepareCommit(waitCompaction, checkpointId);
     }
 

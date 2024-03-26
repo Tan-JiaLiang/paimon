@@ -90,12 +90,14 @@ public class ExpireSnapshotsImpl implements ExpireSnapshots {
 
     @Override
     public int expire() {
+        // 获取最近的snapshot id
         Long latestSnapshotId = snapshotManager.latestSnapshotId();
         if (latestSnapshotId == null) {
             // no snapshot, nothing to expire
             return 0;
         }
 
+        // 获取最早的snapshot id
         Long earliest = snapshotManager.earliestSnapshotId();
         if (earliest == null) {
             return 0;
@@ -103,19 +105,23 @@ public class ExpireSnapshotsImpl implements ExpireSnapshots {
 
         // the min snapshot to retain from 'snapshot.num-retained.max'
         // (the maximum number of snapshots to retain)
+        // retainMax为最多保留多少个snapshot
         long min = Math.max(latestSnapshotId - retainMax + 1, earliest);
 
         // the max exclusive snapshot to expire until
         // protected by 'snapshot.num-retained.min'
         // (the minimum number of completed snapshots to retain)
+        // retainMin为最少保留多少个snapshot
         long maxExclusive = latestSnapshotId - retainMin + 1;
 
         // the snapshot being read by the consumer cannot be deleted
+        // 获取consumer消费最小的snapshot id，这些snapshot是不能被删除的
         maxExclusive =
                 Math.min(maxExclusive, consumerManager.minNextSnapshot().orElse(Long.MAX_VALUE));
 
         // protected by 'snapshot.expire.limit'
         // (the maximum number of snapshots allowed to expire at a time)
+        // snapshot.expire.limit一次性最多清理掉多少个snapshot
         maxExclusive = Math.min(maxExclusive, earliest + maxDeletes);
 
         for (long id = min; id < maxExclusive; id++) {
@@ -145,6 +151,7 @@ public class ExpireSnapshotsImpl implements ExpireSnapshots {
         }
 
         // find first snapshot to expire
+        // 找到第一个要删除的snapshot
         long beginInclusiveId = earliestId;
         for (long id = endExclusiveId - 1; id >= earliestId; id--) {
             if (!snapshotManager.snapshotExists(id)) {
@@ -173,6 +180,7 @@ public class ExpireSnapshotsImpl implements ExpireSnapshots {
             // expire merge tree files and collect changed buckets
             Predicate<ManifestEntry> skipper;
             try {
+                // 获取不能清理的Manifest（过滤器）
                 skipper = snapshotDeletion.dataFileSkipper(taggedSnapshots, id);
             } catch (Exception e) {
                 LOG.info(
@@ -183,10 +191,12 @@ public class ExpireSnapshotsImpl implements ExpireSnapshots {
                 continue;
             }
 
+            // 清理snapshot对应的文件
             snapshotDeletion.cleanUnusedDataFiles(snapshot, skipper);
         }
 
         // delete changelog files
+        // 删除changelog文件
         for (long id = beginInclusiveId; id < endExclusiveId; id++) {
             if (LOG.isDebugEnabled()) {
                 LOG.debug("Ready to delete changelog files from snapshot #" + id);
@@ -199,11 +209,13 @@ public class ExpireSnapshotsImpl implements ExpireSnapshots {
 
         // data files and changelog files in bucket directories has been deleted
         // then delete changed bucket directories if they are empty
+        // 清理空文件夹
         if (cleanEmptyDirectories) {
             snapshotDeletion.cleanDataDirectories();
         }
 
         // delete manifests and indexFiles
+        // 删除manifest和索引文件还有snapshot文件
         List<Snapshot> skippingSnapshots =
                 TagManager.findOverlappedSnapshots(
                         taggedSnapshots, beginInclusiveId, endExclusiveId);
@@ -221,6 +233,7 @@ public class ExpireSnapshotsImpl implements ExpireSnapshots {
             snapshotManager.fileIO().deleteQuietly(snapshotManager.snapshotPath(id));
         }
 
+        // 修改EARLIEST的snapshot文件
         writeEarliestHint(endExclusiveId);
         return (int) (endExclusiveId - beginInclusiveId);
     }

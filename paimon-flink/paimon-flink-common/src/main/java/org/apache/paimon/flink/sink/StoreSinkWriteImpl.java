@@ -139,6 +139,7 @@ public class StoreSinkWriteImpl implements StoreSinkWrite {
                 !(memoryPool != null && memoryPoolFactory != null),
                 "memoryPool and memoryPoolFactory cannot be set at the same time.");
 
+        // 关注这个table write，写和compaction的逻辑在这里面
         TableWriteImpl<?> tableWrite =
                 table.newWrite(
                                 commitUser,
@@ -153,6 +154,7 @@ public class StoreSinkWriteImpl implements StoreSinkWrite {
             tableWrite.withMetricRegistry(new FlinkMetricRegistry(metricGroup));
         }
 
+        // 内存池
         if (memoryPoolFactory != null) {
             return tableWrite.withMemoryPoolFactory(memoryPoolFactory);
         } else {

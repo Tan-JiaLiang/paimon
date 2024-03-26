@@ -43,6 +43,7 @@ public class TableUtils {
      * Delete according to filters.
      *
      * <p>NOTE: This method is only suitable for deletion of small amount of data.
+     * 只适用删除少量数据
      *
      * @return the number of deleted records
      */
@@ -51,6 +52,7 @@ public class TableUtils {
         BatchWriteBuilder writeBuilder = table.newBatchWriteBuilder();
         List<Split> splits = readBuilder.newScan().plan().splits();
         long hit = 0;
+        // 将这堆数据读出来，更改rowkind=DELETE，然后写到新的文件里面去
         try (RecordReader<InternalRow> reader = readBuilder.newRead().createReader(splits);
                 BatchTableWrite write = writeBuilder.newWrite();
                 // we create temp io manager for writer

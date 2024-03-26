@@ -25,7 +25,9 @@ import java.util.stream.Collectors;
 /** Files changed before and after compaction, with changelog produced during compaction. */
 public class CompactIncrement {
 
+    // compact删除的文件（即update_before）
     private final List<DataFileMeta> compactBefore;
+    // compact新增的文件（即update_after）
     private final List<DataFileMeta> compactAfter;
     private final List<DataFileMeta> changelogFiles;
 

@@ -109,6 +109,7 @@ public abstract class FlinkTableSinkBase
                     "Paimon doesn't support streaming INSERT OVERWRITE.");
         }
 
+        // 目前一般不适用log store
         LogSinkProvider logSinkProvider = null;
         if (logStoreTableFactory != null) {
             logSinkProvider = logStoreTableFactory.createSinkProvider(this.context, context);

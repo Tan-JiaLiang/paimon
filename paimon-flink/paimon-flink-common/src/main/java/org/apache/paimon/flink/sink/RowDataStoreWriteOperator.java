@@ -117,6 +117,7 @@ public class RowDataStoreWriteOperator extends TableWriteOperator<InternalRow> {
     public void processElement(StreamRecord<InternalRow> element) throws Exception {
         sinkContext.timestamp = element.hasTimestamp() ? element.getTimestamp() : null;
 
+        // 将数据写入store中
         SinkRecord record;
         try {
             record = write.write(element.getValue());
@@ -180,6 +181,7 @@ public class RowDataStoreWriteOperator extends TableWriteOperator<InternalRow> {
     @Override
     protected List<Committable> prepareCommit(boolean waitCompaction, long checkpointId)
             throws IOException {
+        // 创建Committable
         List<Committable> committables = super.prepareCommit(waitCompaction, checkpointId);
 
         if (logCallback != null) {

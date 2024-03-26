@@ -225,6 +225,7 @@ public class SnapshotReaderImpl implements SnapshotReader {
     /** Get splits from {@link FileKind#ADD} files. */
     @Override
     public Plan read() {
+        // 将snapshot读取出来，这里会做一些manifest和datafile的过滤
         FileStoreScan.Plan plan = scan.plan();
         Long snapshotId = plan.snapshotId();
 
