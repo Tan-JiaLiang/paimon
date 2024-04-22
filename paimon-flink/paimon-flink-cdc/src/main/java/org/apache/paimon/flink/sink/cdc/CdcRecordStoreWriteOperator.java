@@ -76,6 +76,7 @@ public class CdcRecordStoreWriteOperator extends TableWriteOperator<CdcRecord> {
         Optional<GenericRow> optionalConverted = toGenericRow(record, table.schema().fields());
         if (!optionalConverted.isPresent()) {
             while (true) {
+                // schema发生变更，不断重试等待schema可用
                 table = table.copyWithLatestSchema();
                 optionalConverted = toGenericRow(record, table.schema().fields());
                 if (optionalConverted.isPresent()) {
@@ -83,6 +84,9 @@ public class CdcRecordStoreWriteOperator extends TableWriteOperator<CdcRecord> {
                 }
                 Thread.sleep(retrySleepMillis);
             }
+            // schema变更
+            // 1. flush表
+            // 2. 重建一个新的writer
             write.replace(table);
         }
 

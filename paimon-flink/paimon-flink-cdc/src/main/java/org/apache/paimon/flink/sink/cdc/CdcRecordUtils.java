@@ -88,6 +88,7 @@ public class CdcRecordUtils {
             String key = field.getKey();
             String value = field.getValue();
 
+            // 这个record的字段，不在当前表schema中
             int idx = fieldNames.indexOf(key);
             if (idx < 0) {
                 LOG.info("Field " + key + " not found. Waiting for schema update.");

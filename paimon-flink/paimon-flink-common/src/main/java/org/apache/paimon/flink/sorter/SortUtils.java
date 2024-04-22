@@ -88,6 +88,7 @@ public class SortUtils {
         final int parallelism = inputStream.getParallelism();
         CoreOptions options = table.coreOptions();
 
+        // 并行度
         String sinkParallelismValue =
                 table.options().get(FlinkConnectorOptions.SINK_PARALLELISM.key());
         final int sinkParallelism =
@@ -109,8 +110,8 @@ public class SortUtils {
             valueProjectionMap[i] = i + keyFieldCount;
         }
 
-        List<DataField> keyFields = sortKeyType.getFields();
-        List<DataField> dataFields = valueRowType.getFields();
+        List<DataField> keyFields = sortKeyType.getFields();    // 排序键
+        List<DataField> dataFields = valueRowType.getFields();  // 所有字段
 
         List<DataField> fields = new ArrayList<>();
         fields.addAll(keyFields);

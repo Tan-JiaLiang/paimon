@@ -92,6 +92,7 @@ public class SortCompactAction extends CompactAction {
                                 identifier.getObjectName()),
                         fileStoreTable);
 
+        // 是否指定了分区
         if (getPartitions() != null) {
             Predicate partitionPredicate =
                     PredicateBuilder.or(
@@ -101,6 +102,7 @@ public class SortCompactAction extends CompactAction {
             sourceBuilder.withPredicate(partitionPredicate);
         }
 
+        // 并行度
         String scanParallelism = tableConfig.get(FlinkConnectorOptions.SCAN_PARALLELISM.key());
         if (scanParallelism != null) {
             sourceBuilder.withParallelism(Integer.parseInt(scanParallelism));
