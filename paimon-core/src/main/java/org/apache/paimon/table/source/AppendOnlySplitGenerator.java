@@ -45,6 +45,7 @@ public class AppendOnlySplitGenerator implements SplitGenerator {
 
     @Override
     public List<List<DataFileMeta>> splitForBatch(List<DataFileMeta> input) {
+        // 根据targetSplitSize来划分split
         List<DataFileMeta> files = new ArrayList<>(input);
         files.sort(fileComparator(bucketMode == BucketMode.UNAWARE));
         Function<DataFileMeta, Long> weightFunc = file -> Math.max(file.fileSize(), openFileCost);
@@ -56,8 +57,10 @@ public class AppendOnlySplitGenerator implements SplitGenerator {
         // When the bucket mode is unaware, we spit the files as batch, because unaware-bucket table
         // only contains one bucket (bucket 0).
         if (bucketMode == BucketMode.UNAWARE) {
+            // 根据targetSplitSize来划分Split
             return splitForBatch(files);
         } else {
+            // 一个bucket一个split
             return Collections.singletonList(files);
         }
     }

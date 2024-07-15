@@ -49,6 +49,7 @@ public class ForceUpLevel0Compaction implements CompactStrategy {
             candidateCount++;
         }
 
+        // 把所有的level0给universal进行合并，但会基于sizeRatio去计算要合并哪些文件
         return candidateCount == 0
                 ? Optional.empty()
                 : Optional.of(

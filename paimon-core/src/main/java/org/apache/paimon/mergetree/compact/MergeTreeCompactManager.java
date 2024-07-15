@@ -50,6 +50,7 @@ public class MergeTreeCompactManager extends CompactFutureManager {
 
     private final ExecutorService executor;
     private final Levels levels;
+    // 如果changelogProducer为lookup，则使用ForceUpLevel0Compaction，否则使用UniversalCompaction
     private final CompactStrategy strategy;
     private final Comparator<InternalRow> keyComparator;
     private final long compactionFileSize;
@@ -103,8 +104,10 @@ public class MergeTreeCompactManager extends CompactFutureManager {
     @Override
     public void triggerCompaction(boolean fullCompaction) {
         Optional<CompactUnit> optionalUnit;
+        // 获取所有的level sorted run
         List<LevelSortedRun> runs = levels.levelSortedRuns();
         if (fullCompaction) {
+            // 全量合并
             Preconditions.checkState(
                     taskFuture == null,
                     "A compaction task is still running while the user "
@@ -116,15 +119,19 @@ public class MergeTreeCompactManager extends CompactFutureManager {
             }
             optionalUnit = CompactStrategy.pickFullCompaction(levels.numberOfLevels(), runs);
         } else {
+            // 增量合并
             if (taskFuture != null) {
                 return;
             }
             if (LOG.isDebugEnabled()) {
                 LOG.debug("Trigger normal compaction. Picking from the following runs\n{}", runs);
             }
+            // universal compaction 或者 ForceUpLevel0Compaction（只合并level0）
             optionalUnit =
                     strategy.pick(levels.numberOfLevels(), runs)
+                            // 文件数大于0的level
                             .filter(unit -> unit.files().size() > 0)
+                            // 文件数大于1的level 或者 level != outputLevel
                             .filter(
                                     unit ->
                                             unit.files().size() > 1
@@ -183,6 +190,7 @@ public class MergeTreeCompactManager extends CompactFutureManager {
                                                     file.fileName(), file.level(), file.fileSize()))
                             .collect(Collectors.joining(", ")));
         }
+        // 异步compaction
         taskFuture = executor.submit(task);
     }
 
@@ -199,6 +207,7 @@ public class MergeTreeCompactManager extends CompactFutureManager {
                                 r.before(),
                                 r.after());
                     }
+                    // Level compaction升级
                     levels.update(r.before(), r.after());
                     reportLevel0FileCount();
                     if (LOG.isDebugEnabled()) {

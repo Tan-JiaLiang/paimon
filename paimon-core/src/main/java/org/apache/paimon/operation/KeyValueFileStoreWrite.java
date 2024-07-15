@@ -154,6 +154,7 @@ public class KeyValueFileStoreWrite extends MemoryFileStoreWrite<KeyValue> {
                 writerFactoryBuilder.build(partition, bucket, options);
         Comparator<InternalRow> keyComparator = keyComparatorSupplier.get();
         Levels levels = new Levels(keyComparator, restoreFiles, options.numLevels());
+        // 如果changelogProducer为lookup，则使用ForceUpLevel0Compaction，否则使用UniversalCompaction
         UniversalCompaction universalCompaction =
                 new UniversalCompaction(
                         options.maxSizeAmplificationPercent(),

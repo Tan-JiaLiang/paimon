@@ -34,6 +34,8 @@ import java.util.function.Function;
 /**
  * The reader that reads the batches of records.
  *
+ * <p> 使用reader来读一批记录
+ *
  * @since 0.4.0
  */
 @Public
@@ -41,9 +43,12 @@ public interface RecordReader<T> extends Closeable {
 
     /**
      * Reads one batch. The method should return null when reaching the end of the input.
+     * <p> 读一批记录，当读到末尾时返回null
      *
      * <p>The returned iterator object and any contained objects may be held onto by the source for
      * some time, so it should not be immediately reused by the reader.
+     *
+     * <p> 返回的迭代器对象和任何包含的对象可能会被源保留一段时间，因此读取器不应立即重复使用。
      */
     @Nullable
     RecordIterator<T> readBatch() throws IOException;
@@ -68,6 +73,9 @@ public interface RecordReader<T> extends Closeable {
          * Releases the batch that this iterator iterated over. This is not supposed to close the
          * reader and its resources, but is simply a signal that this iterator is not used anymore.
          * This method can be used as a hook to recycle/reuse heavyweight object structures.
+         *
+         * <p> 释放该迭代器迭代过的批次。这并不是要关闭阅读器及其资源，而只是一个信号，表明该迭代器已不再使用。
+         * 该方法可用作回收/重用重量级对象结构的钩子。
          */
         void releaseBatch();
 

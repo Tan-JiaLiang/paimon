@@ -29,13 +29,17 @@ import java.util.List;
 import java.util.PriorityQueue;
 import java.util.stream.Collectors;
 
-/** Algorithm to partition several data files into the minimum number of {@link SortedRun}s. */
+/** Algorithm to partition several data files into the minimum number of {@link SortedRun}s.
+ *
+ * <p> 简单来说，这个就是用来划分sections的。将key重叠的文件放到同一个section中。
+ */
 public class IntervalPartition {
 
     private final List<DataFileMeta> files;
     private final Comparator<InternalRow> keyComparator;
 
     public IntervalPartition(List<DataFileMeta> inputFiles, Comparator<InternalRow> keyComparator) {
+        // 所有files通过keyComparator进行排序
         this.files = new ArrayList<>(inputFiles);
         this.files.sort(
                 (o1, o2) -> {

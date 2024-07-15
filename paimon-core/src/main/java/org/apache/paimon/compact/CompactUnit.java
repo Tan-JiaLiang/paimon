@@ -24,7 +24,9 @@ import org.apache.paimon.mergetree.LevelSortedRun;
 import java.util.ArrayList;
 import java.util.List;
 
-/** A files unit for compaction. */
+/** A files unit for compaction.
+ *  <p> 合并单元
+ */
 public interface CompactUnit {
 
     int outputLevel();

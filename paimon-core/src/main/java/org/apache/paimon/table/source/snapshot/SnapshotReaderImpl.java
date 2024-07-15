@@ -238,6 +238,7 @@ public class SnapshotReaderImpl implements SnapshotReader {
                     .forEach(entry -> newFiles.put(entry.getKey(), entry.getValue()));
             files = newFiles;
         }
+        // 划分splits，这是flink的最小调度单元，一个并行度消费一个split
         List<DataSplit> splits =
                 generateSplits(
                         snapshotId == null ? Snapshot.FIRST_SNAPSHOT_ID - 1 : snapshotId,
@@ -275,6 +276,7 @@ public class SnapshotReaderImpl implements SnapshotReader {
             BinaryRow partition = entry.getKey();
             Map<Integer, List<DataFileMeta>> buckets = entry.getValue();
             for (Map.Entry<Integer, List<DataFileMeta>> bucketEntry : buckets.entrySet()) {
+                // 一个bucket内有N个文件
                 int bucket = bucketEntry.getKey();
                 List<DataFileMeta> bucketFiles = bucketEntry.getValue();
                 DataSplit.Builder builder =
@@ -283,6 +285,9 @@ public class SnapshotReaderImpl implements SnapshotReader {
                                 .withPartition(partition)
                                 .withBucket(bucket)
                                 .isStreaming(isStreaming);
+                // 一个bucket内划分split
+                // 流读：一个bucket一个split
+                // 批读：一个bucket根据targetSplitSize划分split
                 List<List<DataFileMeta>> splitGroups =
                         isStreaming
                                 ? splitGenerator.splitForStreaming(bucketFiles)

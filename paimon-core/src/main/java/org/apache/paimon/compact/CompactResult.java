@@ -27,8 +27,11 @@ import java.util.List;
 /** Result of compaction. */
 public class CompactResult {
 
+    // 合并的文件
     private final List<DataFileMeta> before;
+    // 合并后的文件
     private final List<DataFileMeta> after;
+    // changelog文件
     private final List<DataFileMeta> changelog;
 
     public CompactResult() {

@@ -32,6 +32,7 @@ import java.util.stream.Collectors;
 /**
  * A {@link SortedRun} is a list of files sorted by their keys. The key intervals [minKey, maxKey]
  * of these files do not overlap.
+ * <p> SortedRun 是按键排序的文件列表。这些文件的键值间隔 [minKey, maxKey] 不会重叠。
  */
 public class SortedRun {
 
@@ -62,8 +63,10 @@ public class SortedRun {
 
     public static SortedRun fromUnsorted(
             List<DataFileMeta> unsortedFiles, Comparator<InternalRow> keyComparator) {
+        // SortRun的key不会重叠，这里可以直接使用最小key去排序
         unsortedFiles.sort((o1, o2) -> keyComparator.compare(o1.minKey(), o2.minKey()));
         SortedRun run = new SortedRun(unsortedFiles);
+        // 检查key是否重叠
         run.validate(keyComparator);
         return run;
     }

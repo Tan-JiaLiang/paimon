@@ -46,12 +46,17 @@ public class KeyValue {
     public static final long UNKNOWN_SEQUENCE = -1;
     public static final int UNKNOWN_LEVEL = -1;
 
+    // 主键
     private InternalRow key;
     // determined after written into memory table or read from file
+    // 序列号，用来做有序更新
     private long sequenceNumber;
+    // 标记INSERT/UPDATE_BEFORE/UPDATE_AFTER/DELETE
     private RowKind valueKind;
+    // 具体的值
     private InternalRow value;
     // determined after read from file
+    // compact level等级
     private int level;
 
     public KeyValue replace(InternalRow key, RowKind valueKind, InternalRow value) {

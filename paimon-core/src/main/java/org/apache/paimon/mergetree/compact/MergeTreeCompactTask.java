@@ -85,9 +85,11 @@ public class MergeTreeCompactTask extends CompactTask {
                 for (DataFileMeta file : run.files()) {
                     if (file.fileSize() < minFileSize) {
                         // Smaller files are rewritten along with the previous files
+                        // 小文件会与之前的文件一起重写
                         candidate.add(singletonList(SortedRun.fromSingle(file)));
                     } else {
                         // Large file appear, rewrite previous and upgrade it
+                        // 超过minFileSize，被认定为大文件，重写以前的文件并将它升级
                         rewrite(candidate, result);
                         upgrade(file, result);
                     }
@@ -124,6 +126,7 @@ public class MergeTreeCompactTask extends CompactTask {
                 return;
             } else if (section.size() == 1) {
                 for (DataFileMeta file : section.get(0).files()) {
+                    // 大文件，直接升级
                     upgrade(file, toUpdate);
                 }
                 candidate.clear();

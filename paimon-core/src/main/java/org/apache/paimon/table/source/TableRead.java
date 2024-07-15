@@ -32,6 +32,8 @@ import java.util.List;
 /**
  * An abstraction layer above {@link FileStoreRead} to provide reading of {@link InternalRow}.
  *
+ * <p> 针对单个Split读取数据
+ *
  * @since 0.4.0
  */
 @Public

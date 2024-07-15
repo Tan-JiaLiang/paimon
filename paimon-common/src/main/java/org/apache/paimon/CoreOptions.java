@@ -1326,7 +1326,8 @@ public class CoreOptions implements Serializable {
     public int numLevels() {
         // By default, this ensures that the compaction does not fall to level 0, but at least to
         // level 1
-        Integer numLevels = options.get(NUM_LEVELS);
+        // 默认的level = num-sorted-run.compaction-trigger（默认为5，多少个sorted run触发合并）+1 = 6
+        Integer numLevels = options.get(NUM_LEVELS);    // 默认为空
         numLevels = numLevels == null ? numSortedRunCompactionTrigger() + 1 : numLevels;
         return numLevels;
     }

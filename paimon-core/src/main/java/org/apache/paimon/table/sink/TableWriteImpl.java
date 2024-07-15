@@ -142,11 +142,11 @@ public class TableWriteImpl<T> implements InnerTableWrite, Restorable<List<State
     }
 
     private SinkRecord toSinkRecord(InternalRow row) {
-        keyAndBucketExtractor.setRecord(row);
+        keyAndBucketExtractor.setRecord(row);   // 提取器
         return new SinkRecord(
-                keyAndBucketExtractor.partition(),
-                keyAndBucketExtractor.bucket(),
-                keyAndBucketExtractor.trimmedPrimaryKey(),
+                keyAndBucketExtractor.partition(),  // 提取partition
+                keyAndBucketExtractor.bucket(),     // 提取bucket
+                keyAndBucketExtractor.trimmedPrimaryKey(),  // 提取PK
                 row);
     }
 

@@ -27,6 +27,8 @@ import java.util.List;
 /**
  * A scan of {@link Table} to generate {@link Split} splits.
  *
+ * <p> 批读生成split
+ *
  * @since 0.4.0
  */
 @Public

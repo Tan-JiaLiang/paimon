@@ -43,11 +43,21 @@ public class UniversalCompaction implements CompactStrategy {
 
     private static final Logger LOG = LoggerFactory.getLogger(UniversalCompaction.class);
 
+    // 大小放大的定义是，在changelog mode table的合并树中存储一个字节的数据所需的额外存储量（百分比）。
+    // 默认200
     private final int maxSizeAmp;
+    // 比较changelog mode table的排序运行大小时的百分比灵活性。
+    // 如果候选排序运行的大小比下一个排序运行的大小小1%，则将下一个排序运行纳入该候选集。
+    // 默认为1
     private final int sizeRatio;
+    // 触发压缩的排序运行编号。包括 0 级文件（一个文件一个排序运行）和高级别运行（一个级别一个排序运行）。
+    // 默认为5
     private final int numRunCompactionTrigger;
 
+    // 表示多久执行一次优化压缩，该配置用于确保读取优化系统表的查询及时性。
+    // 默认为null
     @Nullable private final Long opCompactionInterval;
+    // 上一次优化压缩时间
     @Nullable private Long lastOptimizedCompaction;
 
     public UniversalCompaction(int maxSizeAmp, int sizeRatio, int numRunCompactionTrigger) {
@@ -74,12 +84,13 @@ public class UniversalCompaction implements CompactStrategy {
             if (lastOptimizedCompaction == null
                     || currentTimeMillis() - lastOptimizedCompaction > opCompactionInterval) {
                 LOG.debug("Universal compaction due to optimized compaction interval");
-                updateLastOptimizedCompaction();
+                updateLastOptimizedCompaction();    // 记录本次触发优化压缩的时间
                 return Optional.of(CompactUnit.fromLevelRuns(maxLevel, runs));
             }
         }
 
         // 1 checking for reducing size amplification
+        // 由Space Amplification触发的合并
         CompactUnit unit = pickForSizeAmp(maxLevel, runs);
         if (unit != null) {
             if (LOG.isDebugEnabled()) {
@@ -89,6 +100,7 @@ public class UniversalCompaction implements CompactStrategy {
         }
 
         // 2 checking for size ratio
+        // 由Individual Size Ratio触发的合并
         unit = pickForSizeRatio(maxLevel, runs);
         if (unit != null) {
             if (LOG.isDebugEnabled()) {
@@ -98,6 +110,7 @@ public class UniversalCompaction implements CompactStrategy {
         }
 
         // 3 checking for file num
+        // 由 number of sorted runs 触发的合并
         if (runs.size() > numRunCompactionTrigger) {
             // compacting for file num
             int candidateCount = runs.size() - numRunCompactionTrigger + 1;
@@ -112,16 +125,19 @@ public class UniversalCompaction implements CompactStrategy {
 
     @VisibleForTesting
     CompactUnit pickForSizeAmp(int maxLevel, List<LevelSortedRun> runs) {
+        // 检测是否满足compaction触发条件（默认sorted-run为5才触发compaction）
         if (runs.size() < numRunCompactionTrigger) {
             return null;
         }
 
+        // 0到（N-1）的sorted run大小
         long candidateSize =
                 runs.subList(0, runs.size() - 1).stream()
                         .map(LevelSortedRun::run)
                         .mapToLong(SortedRun::totalSize)
                         .sum();
 
+        // 最后一个sorted run大小
         long earliestRunSize = runs.get(runs.size() - 1).run().totalSize();
 
         // size amplification = percentage of additional size
@@ -149,9 +165,11 @@ public class UniversalCompaction implements CompactStrategy {
 
     public CompactUnit pickForSizeRatio(
             int maxLevel, List<LevelSortedRun> runs, int candidateCount, boolean forcePick) {
-        long candidateSize = candidateSize(runs, candidateCount);
+        // 尽量多选一些sorted run进行合并
+        long candidateSize = candidateSize(runs, candidateCount);   // 总大小
         for (int i = candidateCount; i < runs.size(); i++) {
             LevelSortedRun next = runs.get(i);
+            // 总大小 * (100 + ratio) / 100 小于 当前sorted run的总大小
             if (candidateSize * (100.0 + sizeRatio) / 100.0 < next.run().totalSize()) {
                 break;
             }
@@ -185,6 +203,7 @@ public class UniversalCompaction implements CompactStrategy {
             outputLevel = Math.max(0, runs.get(runCount).level() - 1);
         }
 
+        // outputLevel置为首个不为0的level
         if (outputLevel == 0) {
             // do not output level 0
             for (int i = runCount; i < runs.size(); i++) {
@@ -197,6 +216,7 @@ public class UniversalCompaction implements CompactStrategy {
             }
         }
 
+        // 这里就属于优化compact了
         if (runCount == runs.size()) {
             updateLastOptimizedCompaction();
             outputLevel = maxLevel;

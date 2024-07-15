@@ -89,6 +89,7 @@ public class InnerTableScanImpl extends AbstractInnerTableScan {
     }
 
     private StartingScanner.Result applyPushDownLimit(StartingScanner.Result result) {
+        // 通过limit进行文件剪枝，过滤掉一些没必要消费的文件
         if (pushDownLimit != null && result instanceof ScannedResult) {
             long scannedRowCount = 0;
             SnapshotReader.Plan plan = ((ScannedResult) result).plan();

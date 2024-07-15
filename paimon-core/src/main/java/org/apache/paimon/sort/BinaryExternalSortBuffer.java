@@ -44,7 +44,7 @@ import java.util.List;
 import static org.apache.paimon.codegen.CodeGenUtils.newNormalizedKeyComputer;
 import static org.apache.paimon.codegen.CodeGenUtils.newRecordComparator;
 
-/** A spillable {@link SortBuffer}. */
+/** A spillable {@link SortBuffer}. 可溢写的sort buffer */
 public class BinaryExternalSortBuffer implements SortBuffer {
 
     private final BinaryRowSerializer serializer;
@@ -166,6 +166,7 @@ public class BinaryExternalSortBuffer implements SortBuffer {
     @Override
     public boolean write(InternalRow record) throws IOException {
         while (true) {
+            // 往内存中写
             boolean success = inMemorySortBuffer.write(record);
             if (success) {
                 this.numRecords++;
@@ -175,6 +176,7 @@ public class BinaryExternalSortBuffer implements SortBuffer {
                 // did not fit in a fresh buffer, must be large...
                 throw new IOException("The record exceeds the maximum size of a sort buffer.");
             } else {
+                // 写失败会往磁盘上写
                 spill();
 
                 if (spillChannelIDs.size() >= maxNumFileHandles) {
@@ -235,7 +237,7 @@ public class BinaryExternalSortBuffer implements SortBuffer {
             output =
                     FileChannelUtil.createOutputView(
                             ioManager, channel, compressionCodecFactory, compressionBlockSize);
-            new QuickSort().sort(inMemorySortBuffer);
+            new QuickSort().sort(inMemorySortBuffer);   // 快速排序
             inMemorySortBuffer.writeToOutput(output);
             bytesInLastBuffer = output.close();
             blockCount = output.getBlockCount();

@@ -144,12 +144,14 @@ public class MergeTreeWriter implements RecordWriter<KeyValue>, MemoryOwner {
 
     @Override
     public void write(KeyValue kv) throws Exception {
+        // 序列号
         long sequenceNumber =
                 kv.sequenceNumber() == KeyValue.UNKNOWN_SEQUENCE
                         ? newSequenceNumber()
                         : kv.sequenceNumber();
         boolean success = writeBuffer.put(sequenceNumber, kv.valueKind(), kv.key(), kv.value());
         if (!success) {
+            // 写不成功，那么buffer已经满了，需要flush
             flushWriteBuffer(false, false);
             success = writeBuffer.put(sequenceNumber, kv.valueKind(), kv.key(), kv.value());
             if (!success) {
@@ -206,6 +208,8 @@ public class MergeTreeWriter implements RecordWriter<KeyValue>, MemoryOwner {
                     writerFactory.createRollingMergeTreeFileWriter(0);
 
             try {
+                // write buffer落盘
+                // changelog和datafile
                 writeBuffer.forEach(
                         keyComparator,
                         mergeFunction,
@@ -230,8 +234,8 @@ public class MergeTreeWriter implements RecordWriter<KeyValue>, MemoryOwner {
             writeBuffer.clear();
         }
 
-        trySyncLatestCompaction(waitForLatestCompaction);
-        compactManager.triggerCompaction(forcedFullCompaction);
+        trySyncLatestCompaction(waitForLatestCompaction);   // 等待上一次的compact结果
+        compactManager.triggerCompaction(forcedFullCompaction); // 触发compaction
         if (writerMetrics != null) {
             writerMetrics.updateBufferFlushCostMillis(System.currentTimeMillis() - start);
         }

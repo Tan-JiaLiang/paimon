@@ -37,10 +37,12 @@ import static org.apache.paimon.utils.Preconditions.checkArgument;
 /** A class which stores all level files of merge tree. */
 public class Levels {
 
+    // key比较器（主键比大小）
     private final Comparator<InternalRow> keyComparator;
 
+    // Level0的文件
     private final TreeSet<DataFileMeta> level0;
-
+    // 1-N级文件
     private final List<SortedRun> levels;
 
     private final List<DropFileCallback> dropFileCallbacks = new ArrayList<>();
@@ -50,6 +52,7 @@ public class Levels {
         this.keyComparator = keyComparator;
 
         // in case the num of levels is not specified explicitly
+        // level只能增不能减
         int restoredMaxLevel =
                 Math.max(
                         numLevels,
@@ -60,12 +63,16 @@ public class Levels {
                         (a, b) -> {
                             if (a.maxSequenceNumber() != b.maxSequenceNumber()) {
                                 // file with larger sequence number should be in front
+                                // 用sequence number进行排序
                                 return Long.compare(b.maxSequenceNumber(), a.maxSequenceNumber());
                             } else {
                                 // When two or more jobs are writing the same merge tree, it is
                                 // possible that multiple files have the same maxSequenceNumber. In
                                 // this case we have to compare their file names so that files with
                                 // same maxSequenceNumber won't be "de-duplicated" by the tree set.
+                                // 当两个或多个任务在写入相同的合并树时，可能会出现多个文件的 maxSequenceNumber 相同的情况。
+                                // 多个文件的 maxSequenceNumber 可能相同。在这种情况下，我们必须比较它们的文件名，
+                                // 这样具有相同 maxSequenceNumber 的文件就不会被树集 "去重复"。
                                 return a.fileName().compareTo(b.fileName());
                             }
                         });
@@ -74,6 +81,7 @@ public class Levels {
             levels.add(SortedRun.empty());
         }
 
+        // key是level，value是文件
         Map<Integer, List<DataFileMeta>> levelMap = new HashMap<>();
         for (DataFileMeta file : inputFiles) {
             levelMap.computeIfAbsent(file.level(), level -> new ArrayList<>()).add(file);
@@ -140,6 +148,7 @@ public class Levels {
 
     public List<LevelSortedRun> levelSortedRuns() {
         List<LevelSortedRun> runs = new ArrayList<>();
+        // 将所有的Level0的DataFile转成LevelSortedRun
         level0.forEach(file -> runs.add(new LevelSortedRun(0, SortedRun.fromSingle(file))));
         for (int i = 0; i < levels.size(); i++) {
             SortedRun run = levels.get(i);
@@ -177,12 +186,15 @@ public class Levels {
         }
 
         if (level == 0) {
+            // level0
             before.forEach(level0::remove);
             level0.addAll(after);
         } else {
+            // 其他level
             List<DataFileMeta> files = new ArrayList<>(runOfLevel(level).files());
             files.removeAll(before);
             files.addAll(after);
+            // 一个level，一个sorted run
             levels.set(level - 1, SortedRun.fromUnsorted(files, keyComparator));
         }
     }

@@ -70,16 +70,20 @@ public class MergeTreeSplitGenerator implements SplitGenerator {
          * - split2: [5, 180] [5,190]
          * - split3: [200, 600] [210, 700]
          */
+        // 将key重叠的文件放到同一个sections中
         List<List<DataFileMeta>> sections =
                 new IntervalPartition(files, keyComparator)
                         .partition().stream().map(this::flatRun).collect(Collectors.toList());
 
+        // 按照targetSplitSize对sections进行repartition
+        // 将一些不足targetSplitSize的sections进行合并
         return packSplits(sections);
     }
 
     @Override
     public List<List<DataFileMeta>> splitForStreaming(List<DataFileMeta> files) {
         // We don't split streaming scan files
+        // 一个bucket一个split
         return Collections.singletonList(files);
     }
 

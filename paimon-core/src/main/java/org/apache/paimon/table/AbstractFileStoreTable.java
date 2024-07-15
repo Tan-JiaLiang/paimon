@@ -76,8 +76,11 @@ abstract class AbstractFileStoreTable implements FileStoreTable {
 
     private static final long serialVersionUID = 1L;
 
+    // 用来操作文件的工具
     protected final FileIO fileIO;
+    // 表的存储基本路径
     protected final Path path;
+    // 表的schema
     protected final TableSchema tableSchema;
     protected final CatalogEnvironment catalogEnvironment;
 

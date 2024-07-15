@@ -54,7 +54,9 @@ import static org.apache.paimon.predicate.PredicateBuilder.pickTransformFieldMap
 import static org.apache.paimon.predicate.PredicateBuilder.splitAnd;
 import static org.apache.paimon.utils.Preconditions.checkArgument;
 
-/** {@link FileStore} for querying and updating {@link KeyValue}s. */
+/** {@link FileStore} for querying and updating {@link KeyValue}s.
+ *  文件存储，用于查询和更新KeyValues
+ */
 public class KeyValueFileStore extends AbstractFileStore<KeyValue> {
 
     private static final long serialVersionUID = 1L;

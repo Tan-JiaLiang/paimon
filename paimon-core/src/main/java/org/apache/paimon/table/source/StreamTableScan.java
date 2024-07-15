@@ -26,6 +26,8 @@ import javax.annotation.Nullable;
 /**
  * {@link TableScan} for streaming, supports {@link #checkpoint} and {@link #restore}.
  *
+ * <p> 流读生成split
+ *
  * <p>NOTE: {@link #checkpoint} will return the next snapshot id.
  *
  * @since 0.4.0

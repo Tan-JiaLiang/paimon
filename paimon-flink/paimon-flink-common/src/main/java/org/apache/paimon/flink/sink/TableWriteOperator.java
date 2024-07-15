@@ -34,12 +34,14 @@ import java.util.List;
 /** An abstract class for table write operator. */
 public abstract class TableWriteOperator<IN> extends PrepareCommitOperator<IN, Committable> {
 
+    // 核心组件，表存储结构
     protected FileStoreTable table;
 
     private final StoreSinkWrite.Provider storeSinkWriteProvider;
     private final String initialCommitUser;
 
     private transient StoreSinkWriteState state;
+    // 核心组件，写
     protected transient StoreSinkWrite write;
 
     public TableWriteOperator(
@@ -94,6 +96,7 @@ public abstract class TableWriteOperator<IN> extends PrepareCommitOperator<IN, C
         // runtime context, we can test to construct a writer here
         state = new StoreSinkWriteState(context, stateFilter);
 
+        // 初始化写
         write =
                 storeSinkWriteProvider.provide(
                         table, commitUser, state, ioManager, memoryPool, getMetricGroup());
