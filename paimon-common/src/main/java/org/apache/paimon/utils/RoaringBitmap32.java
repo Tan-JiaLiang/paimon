@@ -40,7 +40,7 @@ public class RoaringBitmap32 {
         this.roaringBitmap = new RoaringBitmap();
     }
 
-    private RoaringBitmap32(RoaringBitmap roaringBitmap) {
+    protected RoaringBitmap32(RoaringBitmap roaringBitmap) {
         this.roaringBitmap = roaringBitmap;
     }
 
@@ -148,5 +148,9 @@ public class RoaringBitmap32 {
                                 return iterator.next().roaringBitmap;
                             }
                         }));
+    }
+
+    public static RoaringBitmap32 andNot(final RoaringBitmap32 x1, final RoaringBitmap32 x2) {
+        return new RoaringBitmap32(RoaringBitmap.andNot(x1.roaringBitmap, x2.roaringBitmap));
     }
 }
