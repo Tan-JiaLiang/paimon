@@ -91,6 +91,9 @@ public abstract class FlinkTableSource
         List<String> partitionKeys = table.partitionKeys();
         RowType rowType = LogicalTypeConversion.toLogicalType(table.rowType());
 
+        // todo: 如果过滤器能够完全过滤（像分区），那么flink算子将把calc的where codegen算子去掉
+        // 获取bitmap索引和bsi索引字段，他们是可靠的过滤条件，
+
         // The source must ensure the consumed filters are fully evaluated, otherwise the result
         // of query will be wrong.
         List<ResolvedExpression> unConsumedFilters = new ArrayList<>();

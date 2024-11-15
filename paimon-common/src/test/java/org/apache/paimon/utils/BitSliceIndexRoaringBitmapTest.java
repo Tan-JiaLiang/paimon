@@ -26,34 +26,61 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.util.stream.IntStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+import java.util.Random;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Test for {@link BitSliceIndexRoaringBitmap}. */
 public class BitSliceIndexRoaringBitmapTest {
 
-    private long base;
+    public static final int NUM_OF_ROWS = 100000;
+    public static final int VALUE_BOUND = 1000;
+
+    private List<Pair> pairs;
     private BitSliceIndexRoaringBitmap bsi;
 
     @BeforeEach
     public void setup() throws IOException {
-        this.base = System.currentTimeMillis();
+        Random random = new Random();
+        List<Pair> pairs = new ArrayList<>();
+        long min = 0;
+        long max = 0;
+        for (int i = 0; i < NUM_OF_ROWS; i++) {
+            if (i % 5 == 0) {
+                pairs.add(new Pair(i, null));
+                continue;
+            }
+            long next = random.nextInt(VALUE_BOUND) + 1;
+            min = Math.min(min == 0 ? next : min, next);
+            max = Math.max(max == 0 ? next : max, next);
+            pairs.add(new Pair(i, next));
+        }
         BitSliceIndexRoaringBitmap.Appender appender =
-                new BitSliceIndexRoaringBitmap.Appender(base, toPredicate(100));
-        IntStream.range(0, 31).forEach(x -> appender.append(x, toPredicate(x)));
-        IntStream.range(51, 100).forEach(x -> appender.append(x, toPredicate(x)));
-        appender.append(100, toPredicate(30));
+                new BitSliceIndexRoaringBitmap.Appender(min, max);
+        for (Pair pair : pairs) {
+            if (pair.value == null) {
+                continue;
+            }
+            appender.append(pair.index, pair.value);
+        }
         this.bsi = appender.build();
+        this.pairs = Collections.unmodifiableList(pairs);
     }
 
     @Test
     public void testSerde() throws IOException {
         BitSliceIndexRoaringBitmap.Appender appender =
-                new BitSliceIndexRoaringBitmap.Appender(0, toPredicate(100));
-        IntStream.range(0, 31).forEach(x -> appender.append(x, toPredicate(x)));
-        IntStream.range(51, 100).forEach(x -> appender.append(x, toPredicate(x)));
-        appender.append(100, toPredicate(30));
+                new BitSliceIndexRoaringBitmap.Appender(0, 10);
+        appender.append(0, 0);
+        appender.append(1, 1);
+        appender.append(2, 2);
+        appender.append(10, 6);
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         appender.serialize(new DataOutputStream(out));
@@ -65,60 +92,274 @@ public class BitSliceIndexRoaringBitmapTest {
 
     @Test
     public void testEQ() {
-        assertThat(bsi.eq(toPredicate(1))).isEqualTo(RoaringBitmap32.bitmapOf(1));
-        assertThat(bsi.eq(toPredicate(32))).isEqualTo(RoaringBitmap32.bitmapOf());
-        assertThat(bsi.eq(toPredicate(30))).isEqualTo(RoaringBitmap32.bitmapOf(30, 100));
+        Random random = new Random();
+        for (int i = 0; i < 10; i++) {
+            long predicate = random.nextInt(VALUE_BOUND);
+            assertThat(bsi.eq(predicate))
+                    .isEqualTo(
+                            pairs.stream()
+                                    .filter(x -> Objects.equals(x.value, predicate))
+                                    .map(x -> x.index)
+                                    .collect(
+                                            RoaringBitmap32::new,
+                                            RoaringBitmap32::add,
+                                            (x, y) -> x.or(y)));
+        }
     }
 
     @Test
     public void testLT() {
-        assertThat(bsi.lt(toPredicate(30)))
-                .isEqualTo(RoaringBitmap32.bitmapOf(IntStream.range(0, 30).toArray()));
-        assertThat(bsi.lt(toPredicate(45)))
-                .isEqualTo(
-                        RoaringBitmap32.bitmapOf(
-                                IntStream.concat(IntStream.range(0, 31), IntStream.range(100, 101))
-                                        .toArray()));
+        Random random = new Random();
+        for (int i = 0; i < 10; i++) {
+            long predicate = random.nextInt(VALUE_BOUND);
+            assertThat(bsi.lt(predicate))
+                    .isEqualTo(
+                            pairs.stream()
+                                    .filter(x -> x.value != null)
+                                    .filter(x -> x.value < predicate)
+                                    .map(x -> x.index)
+                                    .collect(
+                                            RoaringBitmap32::new,
+                                            RoaringBitmap32::add,
+                                            (x, y) -> x.or(y)));
+        }
     }
 
     @Test
     public void testLTE() {
-        RoaringBitmap32 expected =
-                RoaringBitmap32.bitmapOf(
-                        IntStream.concat(IntStream.range(0, 31), IntStream.range(100, 101))
-                                .toArray());
-        assertThat(bsi.lte(toPredicate(30))).isEqualTo(expected);
-        assertThat(bsi.lte(toPredicate(45))).isEqualTo(expected);
+        Random random = new Random();
+        for (int i = 0; i < 10; i++) {
+            long predicate = random.nextInt(VALUE_BOUND);
+            assertThat(bsi.lte(predicate))
+                    .isEqualTo(
+                            pairs.stream()
+                                    .filter(x -> x.value != null)
+                                    .filter(x -> x.value <= predicate)
+                                    .map(x -> x.index)
+                                    .collect(
+                                            RoaringBitmap32::new,
+                                            RoaringBitmap32::add,
+                                            (x, y) -> x.or(y)));
+        }
     }
 
     @Test
     public void testGT() {
-        RoaringBitmap32 expected = RoaringBitmap32.bitmapOf(IntStream.range(51, 100).toArray());
-        assertThat(bsi.gt(toPredicate(30))).isEqualTo(expected);
-        assertThat(bsi.gt(toPredicate(45))).isEqualTo(expected);
+        Random random = new Random();
+        for (int i = 0; i < 10; i++) {
+            long predicate = random.nextInt(VALUE_BOUND);
+            assertThat(bsi.gt(predicate))
+                    .isEqualTo(
+                            pairs.stream()
+                                    .filter(x -> x.value != null)
+                                    .filter(x -> x.value > predicate)
+                                    .map(x -> x.index)
+                                    .collect(
+                                            RoaringBitmap32::new,
+                                            RoaringBitmap32::add,
+                                            (x, y) -> x.or(y)));
+        }
     }
 
     @Test
     public void testGTE() {
-        assertThat(bsi.gte(toPredicate(30)))
-                .isEqualTo(
-                        RoaringBitmap32.bitmapOf(
-                                IntStream.concat(IntStream.range(30, 31), IntStream.range(51, 101))
-                                        .toArray()));
-        assertThat(bsi.gte(toPredicate(45)))
-                .isEqualTo(RoaringBitmap32.bitmapOf(IntStream.range(51, 100).toArray()));
+        Random random = new Random();
+        for (int i = 0; i < 10; i++) {
+            long predicate = random.nextInt(VALUE_BOUND);
+            assertThat(bsi.gte(predicate))
+                    .isEqualTo(
+                            pairs.stream()
+                                    .filter(x -> x.value != null)
+                                    .filter(x -> x.value >= predicate)
+                                    .map(x -> x.index)
+                                    .collect(
+                                            RoaringBitmap32::new,
+                                            RoaringBitmap32::add,
+                                            (x, y) -> x.or(y)));
+        }
     }
 
     @Test
     public void testIsNotNull() {
         assertThat(bsi.isNotNull())
                 .isEqualTo(
-                        RoaringBitmap32.bitmapOf(
-                                IntStream.concat(IntStream.range(0, 31), IntStream.range(51, 101))
-                                        .toArray()));
+                        pairs.stream()
+                                .filter(x -> x.value != null)
+                                .map(x -> x.index)
+                                .collect(
+                                        RoaringBitmap32::new,
+                                        RoaringBitmap32::add,
+                                        (x, y) -> x.or(y)));
     }
 
-    private long toPredicate(long predicate) {
-        return base + predicate;
+    @Test
+    public void testMinAndMax() {
+        Random random = new Random();
+
+        // test valueAt
+        for (int i = 0; i < 100; i++) {
+            Pair pair = pairs.get(random.nextInt(NUM_OF_ROWS));
+            assertThat(bsi.valueAt(pair.index)).isEqualTo(pair.value);
+        }
+
+        // test without found set
+        assertThat(bsi.min())
+                .isEqualTo(
+                        pairs.stream()
+                                .map(x -> x.value)
+                                .filter(Objects::nonNull)
+                                .min(Comparator.comparingLong(x -> x))
+                                .orElse(null));
+        assertThat(bsi.max())
+                .isEqualTo(
+                        pairs.stream()
+                                .map(x -> x.value)
+                                .filter(Objects::nonNull)
+                                .max(Comparator.comparingLong(x -> x))
+                                .orElse(null));
+
+        // test with found set
+        for (int i = 0; i < 10; i++) {
+            RoaringBitmap32 foundSet = new RoaringBitmap32();
+            for (int j = 0; j < 1000; j++) {
+                foundSet.add(random.nextInt(10000));
+            }
+            assertThat(bsi.min(foundSet))
+                    .isEqualTo(
+                            pairs.stream()
+                                    .filter(x -> foundSet.contains(x.index))
+                                    .map(x -> x.value)
+                                    .filter(Objects::nonNull)
+                                    .min(Comparator.comparingLong(x -> x))
+                                    .orElse(null));
+            assertThat(bsi.max(foundSet))
+                    .isEqualTo(
+                            pairs.stream()
+                                    .filter(x -> foundSet.contains(x.index))
+                                    .map(x -> x.value)
+                                    .filter(Objects::nonNull)
+                                    .max(Comparator.comparingLong(x -> x))
+                                    .orElse(null));
+        }
+    }
+
+    @Test
+    public void testSum() {
+        Random random = new Random();
+
+        // test without found set
+        assertThat(bsi.sum())
+                .isEqualTo(
+                        pairs.stream()
+                                .map(x -> x.value)
+                                .filter(Objects::nonNull)
+                                .reduce(0L, Long::sum));
+
+        // test with found set
+        for (int i = 0; i < 10; i++) {
+            RoaringBitmap32 foundSet = new RoaringBitmap32();
+            for (int j = 0; j < 1000; j++) {
+                foundSet.add(random.nextInt(NUM_OF_ROWS));
+            }
+            assertThat(bsi.sum(foundSet))
+                    .isEqualTo(
+                            pairs.stream()
+                                    .filter(x -> foundSet.contains(x.index))
+                                    .map(x -> x.value)
+                                    .filter(Objects::nonNull)
+                                    .reduce(0L, Long::sum));
+        }
+    }
+
+    @Test
+    public void testTopK() {
+        Random random = new Random();
+
+        // test without found set
+        List<Integer> withoutFoundSetExpected =
+                pairs.stream()
+                        .filter(x -> x.value != null)
+                        .sorted(
+                                Comparator.comparing((Pair x) -> x.value)
+                                        .thenComparingInt(x -> x.index))
+                        .map(x -> x.index)
+                        .collect(Collectors.toList());
+        Collections.reverse(withoutFoundSetExpected);
+        for (int i = 0; i < 100; i++) {
+            RoaringBitmap32 bitmap = new RoaringBitmap32();
+            withoutFoundSetExpected.subList(0, i).forEach(bitmap::add);
+            assertThat(bsi.topK(i)).isEqualTo(bitmap);
+        }
+
+        // test with found set
+        RoaringBitmap32 foundSet = new RoaringBitmap32();
+        for (int i = 0; i < 1000; i++) {
+            foundSet.add(random.nextInt(NUM_OF_ROWS));
+        }
+        List<Integer> witFoundSetExpected =
+                pairs.stream()
+                        .filter(x -> x.value != null)
+                        .filter(x -> foundSet.contains(x.index))
+                        .sorted(
+                                Comparator.comparing((Pair x) -> x.value)
+                                        .thenComparingInt(x -> x.index))
+                        .map(x -> x.index)
+                        .collect(Collectors.toList());
+        Collections.reverse(witFoundSetExpected);
+        for (int i = 0; i < 100; i++) {
+            RoaringBitmap32 bitmap = new RoaringBitmap32();
+            witFoundSetExpected.subList(0, i).forEach(bitmap::add);
+            assertThat(bsi.topK(foundSet, i)).isEqualTo(bitmap);
+        }
+    }
+
+    @Test
+    public void testBottomK() {
+        Random random = new Random();
+
+        // test without found set
+        List<Integer> withoutFoundSetExpected =
+                pairs.stream()
+                        .filter(x -> x.value != null)
+                        .sorted(
+                                Comparator.comparing((Pair x) -> x.value)
+                                        .thenComparingInt(x -> -x.index))
+                        .map(x -> x.index)
+                        .collect(Collectors.toList());
+        for (int i = 0; i < 100; i++) {
+            RoaringBitmap32 bitmap = new RoaringBitmap32();
+            withoutFoundSetExpected.subList(0, i).forEach(bitmap::add);
+            assertThat(bsi.bottomK(i)).isEqualTo(bitmap);
+        }
+
+        // test with found set
+        RoaringBitmap32 foundSet = new RoaringBitmap32();
+        for (int i = 0; i < 1000; i++) {
+            foundSet.add(random.nextInt(NUM_OF_ROWS));
+        }
+        List<Integer> witFoundSetExpected =
+                pairs.stream()
+                        .filter(x -> x.value != null)
+                        .filter(x -> foundSet.contains(x.index))
+                        .sorted(
+                                Comparator.comparing((Pair x) -> x.value)
+                                        .thenComparingInt(x -> -x.index))
+                        .map(x -> x.index)
+                        .collect(Collectors.toList());
+        for (int i = 0; i < 100; i++) {
+            RoaringBitmap32 bitmap = new RoaringBitmap32();
+            witFoundSetExpected.subList(0, i).forEach(bitmap::add);
+            assertThat(bsi.bottomK(foundSet, i)).isEqualTo(bitmap);
+        }
+    }
+
+    private static class Pair {
+        int index;
+        Long value;
+
+        public Pair(int index, Long value) {
+            this.index = index;
+            this.value = value;
+        }
     }
 }
