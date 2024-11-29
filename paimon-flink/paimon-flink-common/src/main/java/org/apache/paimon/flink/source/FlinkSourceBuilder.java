@@ -86,6 +86,7 @@ public class FlinkSourceBuilder {
     private StreamExecutionEnvironment env;
     @Nullable private int[][] projectedFields;
     @Nullable private Predicate predicate;
+    @Nullable private Predicate indexPredicate;
     @Nullable private LogSourceProvider logSourceProvider;
     @Nullable private Integer parallelism;
     @Nullable private Long limit;
@@ -134,6 +135,11 @@ public class FlinkSourceBuilder {
         return this;
     }
 
+    public FlinkSourceBuilder indexPredicate(Predicate indexPredicate) {
+        this.indexPredicate = indexPredicate;
+        return this;
+    }
+
     public FlinkSourceBuilder limit(@Nullable Long limit) {
         this.limit = limit;
         return this;
@@ -177,6 +183,9 @@ public class FlinkSourceBuilder {
                 table.newReadBuilder().withProjection(projectedFields).withFilter(predicate);
         if (limit != null) {
             readBuilder.withLimit(limit.intValue());
+        }
+        if (indexPredicate != null) {
+            readBuilder.withIndexFilter(indexPredicate);
         }
         return readBuilder.dropStats();
     }

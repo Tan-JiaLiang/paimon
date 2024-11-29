@@ -43,7 +43,14 @@ public class FilterPushDownITCase extends CatalogITCaseBase {
 
     @Override
     public List<String> ddl() {
-        return ImmutableList.of("CREATE TABLE T (" + "a INT, b INT, c STRING) PARTITIONED BY (a);");
+        return ImmutableList.of(
+                "CREATE TABLE T (a INT, b INT, c STRING)"
+                        + " PARTITIONED BY (a)"
+                        + " WITH ("
+                        + "'file-index.bitmap.columns'='b',"
+                        + "'file-index.bloom-filter.columns'='c',"
+                        + "'file-index.read.enabled'='false'"
+                        + ");");
     }
 
     @BeforeEach
@@ -61,6 +68,60 @@ public class FilterPushDownITCase extends CatalogITCaseBase {
                 "+- Limit(offset=[0], fetch=[1], global=[false])\n"
                         + "+- TableSourceScan(table=[[PAIMON, default, T, filter=[=(a, 1)], project=[b, c], limit=[1]]], fields=[b, c])",
                 Row.ofKind(RowKind.INSERT, 1, 1, "1"));
+    }
+
+    @Test
+    public void testPartitionAndIndexConditionConsuming() {
+        // enable file index read
+        tEnv.executeSql("ALTER TABLE T SET('file-index.read.enabled'='true')");
+
+        // bitmap index push down
+        String s1 = "SELECT * FROM T where a = 1 AND b = 1 limit 1";
+        assertPlanAndResult(
+                s1,
+                "+- Limit(offset=[0], fetch=[1], global=[false])\n"
+                        + "+- TableSourceScan(table=[[PAIMON, default, T, filter=[and(=(a, 1), =(b, 1))], project=[c], limit=[1]]], fields=[c])",
+                Row.ofKind(RowKind.INSERT, 1, 1, "1"));
+
+        // bitmap index does not support range push down
+        String s2 = "SELECT * FROM T where a = 1 AND b > 0 limit 10";
+        assertPlanAndResult(
+                s2,
+                "+- Limit(offset=[0], fetch=[10], global=[false])\n"
+                        + "+- Calc(select=[CAST(1 AS INTEGER) AS a, b, c], where=[>(b, 0)])\n"
+                        + "+- TableSourceScan(table=[[PAIMON, default, T, filter=[and(=(a, 1), >(b, 0))], project=[b, c]]], fields=[b, c])",
+                Row.ofKind(RowKind.INSERT, 1, 1, "1"),
+                Row.ofKind(RowKind.INSERT, 1, 2, "2"));
+
+        // bloom-filter index does not support filter push down
+        String s3 = "SELECT * FROM T where a = 1 AND c = '1' limit 1";
+        assertPlanAndResult(
+                s3,
+                "+- Limit(offset=[0], fetch=[1], global=[false])\n"
+                        + "+- Calc(select=[CAST(1 AS INTEGER) AS a, b, CAST('1' AS VARCHAR(2147483647)) AS c], where=[=(c, '1')])\n"
+                        + "+- TableSourceScan(table=[[PAIMON, default, T, filter=[and(=(a, 1), =(c, _UTF-16LE'1':VARCHAR(2147483647) CHARACTER SET \"UTF-16LE\"))], project=[b, c]]], fields=[b, c])",
+                Row.ofKind(RowKind.INSERT, 1, 1, "1"));
+
+        // test bitmap and bloom-filter combine
+        String s4 = "SELECT * FROM T where a = 1 AND b = 1 AND c = '1' limit 1";
+        assertPlanAndResult(
+                s4,
+                "+- Limit(offset=[0], fetch=[1], global=[false])\n"
+                        + "+- Calc(select=[CAST(1 AS INTEGER) AS a, CAST(1 AS INTEGER) AS b, CAST('1' AS VARCHAR(2147483647)) AS c], where=[(c = '1')])\n"
+                        + "+- TableSourceScan(table=[[PAIMON, default, T, filter=[and(and(=(a, 1), =(b, 1)), =(c, _UTF-16LE'1':VARCHAR(2147483647) CHARACTER SET \"UTF-16LE\"))], project=[c]]], fields=[c])",
+                Row.ofKind(RowKind.INSERT, 1, 1, "1"));
+
+        // test bitmap and bloom-filter combine without partition
+        String s5 = "SELECT * FROM T where b = 1 AND c = '1' limit 1";
+        assertPlanAndResult(
+                s5,
+                "+- Limit(offset=[0], fetch=[1], global=[false])\n"
+                        + "+- Calc(select=[a, CAST(1 AS INTEGER) AS b, CAST('1' AS VARCHAR(2147483647)) AS c], where=[(c = '1')])\n"
+                        + "+- TableSourceScan(table=[[PAIMON, default, T, filter=[and(=(b, 1), =(c, _UTF-16LE'1':VARCHAR(2147483647) CHARACTER SET \"UTF-16LE\"))], project=[a, c]]], fields=[a, c])",
+                Row.ofKind(RowKind.INSERT, 1, 1, "1"));
+
+        // disable file index read
+        tEnv.executeSql("ALTER TABLE T SET('file-index.read.enabled'='false')");
     }
 
     @Test
