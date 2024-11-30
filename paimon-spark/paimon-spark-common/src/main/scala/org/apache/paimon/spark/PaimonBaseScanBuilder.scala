@@ -38,6 +38,8 @@ abstract class PaimonBaseScanBuilder(table: Table)
 
   protected var pushedPredicates: Array[(Filter, Predicate)] = Array.empty
 
+  protected var pushedIndexPredicates: Array[Predicate] = Array.empty
+
   protected var partitionFilters: Array[Filter] = Array.empty
 
   protected var postScanFilters: Array[Filter] = Array.empty
@@ -45,7 +47,7 @@ abstract class PaimonBaseScanBuilder(table: Table)
   protected var pushDownLimit: Option[Int] = None
 
   override def build(): Scan = {
-    PaimonScan(table, requiredSchema, pushedPredicates.map(_._2), partitionFilters, pushDownLimit)
+    PaimonScan(table, requiredSchema, pushedPredicates.map(_._2), pushedIndexPredicates, partitionFilters, pushDownLimit)
   }
 
   /**
@@ -55,11 +57,13 @@ abstract class PaimonBaseScanBuilder(table: Table)
    */
   override def pushFilters(filters: Array[Filter]): Array[Filter] = {
     val pushable = mutable.ArrayBuffer.empty[(Filter, Predicate)]
+    val indexPredicate = mutable.ArrayBuffer.empty[Predicate]
     val postScan = mutable.ArrayBuffer.empty[Filter]
     val partitionFilter = mutable.ArrayBuffer.empty[Filter]
 
     val converter = new SparkFilterConverter(table.rowType)
     val visitor = new PartitionPredicateVisitor(table.partitionKeys())
+    val indexVisitor = table.fileIndexFilterPushDownVisitor()
     filters.foreach {
       filter =>
         val predicate = converter.convertIgnoreFailure(filter)
@@ -69,6 +73,8 @@ abstract class PaimonBaseScanBuilder(table: Table)
           pushable.append((filter, predicate))
           if (predicate.visit(visitor)) {
             partitionFilter.append(filter)
+          } else if (predicate.visit(indexVisitor)) {
+            indexPredicate.append(predicate)
           } else {
             postScan.append(filter)
           }
@@ -80,6 +86,9 @@ abstract class PaimonBaseScanBuilder(table: Table)
     }
     if (partitionFilter.nonEmpty) {
       this.partitionFilters = partitionFilter.toArray
+    }
+    if (indexPredicate.nonEmpty) {
+      this.pushedIndexPredicates = indexPredicate.toArray
     }
     if (postScan.nonEmpty) {
       this.postScanFilters = postScan.toArray

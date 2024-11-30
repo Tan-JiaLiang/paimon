@@ -18,18 +18,15 @@
 
 package org.apache.paimon.spark.sql
 
-import org.apache.paimon.spark.{PaimonBatch, PaimonInputPartition, PaimonScan, PaimonSparkTestBase, SparkTable}
+import org.apache.paimon.spark.{PaimonScan, PaimonSparkTestBase, SparkTable}
 import org.apache.paimon.table.source.DataSplit
-
-import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.expressions.{AttributeReference, EqualTo, Expression, Literal}
 import org.apache.spark.sql.catalyst.plans.logical.Filter
 import org.apache.spark.sql.catalyst.trees.TreePattern.DYNAMIC_PRUNING_SUBQUERY
 import org.apache.spark.sql.connector.read.{ScanBuilder, SupportsPushDownLimit}
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
+import org.apache.spark.sql.{DataFrame, Row}
 import org.junit.jupiter.api.Assertions
-
-import scala.collection.JavaConverters._
 
 class PaimonPushDownTest extends PaimonSparkTestBase {
 
@@ -44,8 +41,9 @@ class PaimonPushDownTest extends PaimonSparkTestBase {
     spark.sql("INSERT INTO T VALUES (1, 'a', 'p1'), (2, 'b', 'p1'), (3, 'c', 'p2')")
 
     val q = "SELECT * FROM T WHERE pt = 'p1'"
-    Assertions.assertTrue(checkEqualToFilterExists(q, "pt", Literal("p1")))
-    checkAnswer(spark.sql(q), Row(1, "a", "p1") :: Row(2, "b", "p1") :: Nil)
+    val df = spark.sql(q)
+    Assertions.assertTrue(checkEqualToFilterExists(df, "pt", Literal("p1")))
+    checkAnswer(df, Row(1, "a", "p1") :: Row(2, "b", "p1") :: Nil)
   }
 
   test(s"Paimon push down: apply partition filter push down with partitioned table") {
@@ -60,30 +58,75 @@ class PaimonPushDownTest extends PaimonSparkTestBase {
     // partition filter push down did not hit cases:
     // case 1
     var q = "SELECT * FROM T WHERE id = '1'"
-    Assertions.assertTrue(checkFilterExists(q))
-    checkAnswer(spark.sql(q), Row(1, "a", "p1") :: Nil)
+    var df = spark.sql(q)
+    Assertions.assertTrue(checkFilterExists(df))
+    checkAnswer(df, Row(1, "a", "p1") :: Nil)
 
     // case 2
     // filter "id = '1' or pt = 'p1'" can't push down completely, it still need to be evaluated after scanning
     q = "SELECT * FROM T WHERE id = '1' or pt = 'p1'"
-    Assertions.assertTrue(checkEqualToFilterExists(q, "pt", Literal("p1")))
-    checkAnswer(spark.sql(q), Row(1, "a", "p1") :: Row(2, "b", "p1") :: Nil)
+    df = spark.sql(q)
+    Assertions.assertTrue(checkEqualToFilterExists(df, "pt", Literal("p1")))
+    checkAnswer(df, Row(1, "a", "p1") :: Row(2, "b", "p1") :: Nil)
 
     // partition filter push down hit cases:
     // case 1
     q = "SELECT * FROM T WHERE pt = 'p1'"
-    Assertions.assertFalse(checkFilterExists(q))
-    checkAnswer(spark.sql(q), Row(1, "a", "p1") :: Row(2, "b", "p1") :: Nil)
+    df = spark.sql(q)
+    Assertions.assertFalse(checkFilterExists(df))
+    checkAnswer(df, Row(1, "a", "p1") :: Row(2, "b", "p1") :: Nil)
 
     // case 2
     q = "SELECT * FROM T WHERE id = '1' and pt = 'p1'"
-    Assertions.assertFalse(checkEqualToFilterExists(q, "pt", Literal("p1")))
-    checkAnswer(spark.sql(q), Row(1, "a", "p1") :: Nil)
+    df = spark.sql(q)
+    Assertions.assertFalse(checkEqualToFilterExists(df, "pt", Literal("p1")))
+    checkAnswer(df, Row(1, "a", "p1") :: Nil)
 
     // case 3
     q = "SELECT * FROM T WHERE pt < 'p3'"
-    Assertions.assertFalse(checkFilterExists(q))
-    checkAnswer(spark.sql(q), Row(1, "a", "p1") :: Row(2, "b", "p1") :: Row(3, "c", "p2") :: Nil)
+    df = spark.sql(q)
+    Assertions.assertFalse(checkFilterExists(df))
+    checkAnswer(df, Row(1, "a", "p1") :: Row(2, "b", "p1") :: Row(3, "c", "p2") :: Nil)
+  }
+
+  test("Paimon push down: apply file index push down with append only table") {
+    spark.sql(s"""
+                 |CREATE TABLE T (pt INT, b INT, c STRING)
+                 |TBLPROPERTIES (
+                 |  'file-index.bitmap.columns'='b',
+                 |  'file-index.bloom-filter.columns'='c',
+                 |  'file-index.read.enabled'='true'
+                 |)
+                 |PARTITIONED BY (pt)
+                 |""".stripMargin)
+
+    spark.sql("insert into table T values(1, 1, '1'), (1, 2, '2'), (2, 3, '3'), (3, 3, '3')")
+
+    // bitmap index filter push down
+    val q1 = "SELECT * FROM T WHERE b = 2"
+    val df1 = spark.sql(q1)
+    Assertions.assertFalse(checkEqualToFilterExists(df1, "b", Literal(2)))
+    checkAnswer(df1, Row(1, 2, "2") :: Nil)
+
+    // partition and bitmap index filter push down
+    val q2 = "SELECT * FROM T WHERE pt = 1 and b = 2"
+    val df2 = spark.sql(q2)
+    Assertions.assertFalse(checkEqualToFilterExists(df2, "pt", Literal("1")))
+    Assertions.assertFalse(checkEqualToFilterExists(df2, "b", Literal("2")))
+    checkAnswer(df2, Row(1, 2, "2") :: Nil)
+
+    // bloom-filter index should not be pushed down
+    val q3 = "SELECT * FROM T WHERE c = '2'"
+    val df3 = spark.sql(q3)
+    Assertions.assertTrue(checkFilterExists(df3))
+    checkAnswer(spark.sql(q2), Row(1, 2, "2") :: Nil)
+
+    // bitmap index and bloom-filter index combine
+    val q4 = "SELECT * FROM T WHERE b = 3 and c = '3'"
+    val df4 = spark.sql(q4)
+    Assertions.assertFalse(checkEqualToFilterExists(df4, "b", Literal("3")))
+    Assertions.assertTrue(checkEqualToFilterExists(df4, "c", Literal("3")))
+    checkAnswer(df4, Row(2, 3, "3") :: Row(3, 3, "3") :: Nil)
   }
 
   test("Paimon pushDown: limit for append-only tables with deletion vector") {
@@ -254,15 +297,15 @@ class PaimonPushDownTest extends PaimonSparkTestBase {
       .newScanBuilder(CaseInsensitiveStringMap.empty())
   }
 
-  private def checkFilterExists(sql: String): Boolean = {
-    spark.sql(sql).queryExecution.optimizedPlan.exists {
+  private def checkFilterExists(df: DataFrame): Boolean = {
+    df.queryExecution.optimizedPlan.exists {
       case Filter(_: Expression, _) => true
       case _ => false
     }
   }
 
-  private def checkEqualToFilterExists(sql: String, name: String, value: Literal): Boolean = {
-    spark.sql(sql).queryExecution.optimizedPlan.exists {
+  private def checkEqualToFilterExists(df: DataFrame, name: String, value: Literal): Boolean = {
+    df.queryExecution.optimizedPlan.exists {
       case Filter(c: Expression, _) =>
         c.exists {
           case EqualTo(a: AttributeReference, r: Literal) =>

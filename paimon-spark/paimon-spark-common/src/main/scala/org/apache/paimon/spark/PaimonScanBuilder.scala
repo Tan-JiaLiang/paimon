@@ -56,6 +56,11 @@ class PaimonScanBuilder(table: Table)
       return false
     }
 
+    // TODO: support index push down aggregate
+    if (pushedIndexPredicates.nonEmpty) {
+      return false
+    }
+
     val aggregator = new LocalAggregator(table)
     if (!aggregator.pushAggregation(aggregation)) {
       return false

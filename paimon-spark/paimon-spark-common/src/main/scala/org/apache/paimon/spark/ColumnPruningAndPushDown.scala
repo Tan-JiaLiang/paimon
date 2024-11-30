@@ -33,6 +33,7 @@ trait ColumnPruningAndPushDown extends Scan with Logging {
   def table: Table
   def requiredSchema: StructType
   def filters: Seq[Predicate]
+  def indexFilters: Seq[Predicate]
   def pushDownLimit: Option[Int] = None
 
   lazy val tableRowType: RowType = table.rowType
@@ -60,6 +61,10 @@ trait ColumnPruningAndPushDown extends Scan with Logging {
     if (filters.nonEmpty) {
       val pushedPredicate = PredicateBuilder.and(filters: _*)
       _readBuilder.withFilter(pushedPredicate)
+    }
+    if (indexFilters.nonEmpty) {
+      val pushedIndexPredicate = PredicateBuilder.and(indexFilters: _*)
+      _readBuilder.withIndexFilter(pushedIndexPredicate)
     }
     pushDownLimit.foreach(_readBuilder.withLimit)
     _readBuilder.dropStats()

@@ -19,13 +19,12 @@
 package org.apache.paimon.spark
 
 import org.apache.paimon.predicate.Predicate
-import org.apache.paimon.table.{BucketMode, FileStoreTable, Table}
 import org.apache.paimon.table.source.{DataSplit, Split}
-
+import org.apache.paimon.table.{BucketMode, FileStoreTable, Table}
 import org.apache.spark.sql.PaimonUtils.fieldReference
-import org.apache.spark.sql.connector.expressions.{Expressions, NamedReference, SortDirection, SortOrder, Transform}
-import org.apache.spark.sql.connector.read.{SupportsReportOrdering, SupportsReportPartitioning, SupportsRuntimeFiltering}
+import org.apache.spark.sql.connector.expressions._
 import org.apache.spark.sql.connector.read.partitioning.{KeyGroupedPartitioning, Partitioning, UnknownPartitioning}
+import org.apache.spark.sql.connector.read.{SupportsReportOrdering, SupportsReportPartitioning, SupportsRuntimeFiltering}
 import org.apache.spark.sql.sources.{Filter, In}
 import org.apache.spark.sql.types.StructType
 
@@ -35,10 +34,11 @@ case class PaimonScan(
     table: Table,
     requiredSchema: StructType,
     filters: Seq[Predicate],
+    indexFilters: Seq[Predicate],
     reservedFilters: Seq[Filter],
     override val pushDownLimit: Option[Int],
     bucketedScanDisabled: Boolean = false)
-  extends PaimonBaseScan(table, requiredSchema, filters, reservedFilters, pushDownLimit)
+  extends PaimonBaseScan(table, requiredSchema, filters, indexFilters, reservedFilters, pushDownLimit)
   with SupportsRuntimeFiltering
   with SupportsReportPartitioning
   with SupportsReportOrdering {

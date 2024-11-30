@@ -41,6 +41,7 @@ abstract class PaimonBaseScan(
     table: Table,
     requiredSchema: StructType,
     filters: Seq[Predicate],
+    indexFilters: Seq[Predicate],
     reservedFilters: Seq[Filter],
     pushDownLimit: Option[Int])
   extends Scan
@@ -135,7 +136,12 @@ abstract class PaimonBaseScan(
     } else {
       ""
     }
-    s"PaimonScan: [${table.name}]" + pushedFiltersStr +
+    val pushedIndexFiltersStr = if (indexFilters.nonEmpty) {
+      ", PushedIndexFilters: [" + indexFilters.mkString(",") + "]"
+    } else {
+      ""
+    }
+    s"PaimonScan: [${table.name}]" + pushedFiltersStr + pushedIndexFiltersStr +
       pushDownLimit.map(limit => s", Limit: [$limit]").getOrElse("")
   }
 }

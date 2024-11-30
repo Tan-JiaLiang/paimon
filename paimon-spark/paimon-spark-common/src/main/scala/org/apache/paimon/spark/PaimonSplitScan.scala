@@ -28,7 +28,7 @@ import org.apache.spark.sql.types.StructType
 
 class PaimonSplitScanBuilder(table: KnownSplitsTable) extends PaimonBaseScanBuilder(table) {
   override def build(): Scan = {
-    PaimonSplitScan(table, table.splits(), requiredSchema, pushedPredicates.map(_._2))
+    PaimonSplitScan(table, table.splits(), requiredSchema, pushedPredicates.map(_._2), pushedIndexPredicates)
   }
 }
 
@@ -37,7 +37,8 @@ case class PaimonSplitScan(
     table: Table,
     dataSplits: Array[DataSplit],
     requiredSchema: StructType,
-    filters: Seq[Predicate])
+    filters: Seq[Predicate],
+    indexFilters: Seq[Predicate])
   extends ColumnPruningAndPushDown
   with ScanHelper {
 
@@ -56,13 +57,18 @@ case class PaimonSplitScan(
     } else {
       ""
     }
-    s"PaimonSplitScan: [${table.name}]" + pushedFiltersStr
+    val pushedIndexFiltersStr = if (indexFilters.nonEmpty) {
+      ", PushedFilters: [" + indexFilters.mkString(",") + "]"
+    } else {
+      ""
+    }
+    s"PaimonSplitScan: [${table.name}]" + pushedFiltersStr + pushedIndexFiltersStr
   }
 }
 
 object PaimonSplitScan {
   def apply(table: Table, dataSplits: Array[DataSplit]): PaimonSplitScan = {
     val requiredSchema = SparkTypeUtils.fromPaimonRowType(table.rowType)
-    new PaimonSplitScan(table, dataSplits, requiredSchema, Seq.empty)
+    new PaimonSplitScan(table, dataSplits, requiredSchema, Seq.empty, Seq.empty)
   }
 }
