@@ -983,16 +983,13 @@ public class PrimaryKeyFileStoreTableTest extends FileStoreTableTestBase {
         Predicate predicate = new PredicateBuilder(ROW_TYPE).equal(2, 100L);
         List<Split> splits = toSplits(table.newSnapshotReader().read().dataSplits());
 
-        Function<InternalRow, String> TO_STRING =
+        Function<InternalRow, String> toString =
                 row -> row.getInt(0) + "," + row.getInt(1) + "," + row.getLong(2);
 
         // test read without index filter, should not fallback
         List<String> a1 = new ArrayList<>();
-        RecordReader<InternalRow> r1 =
-                table.newRead()
-                        .withFilter(predicate)
-                        .createReader(splits);
-        r1.forEachRemaining(row -> a1.add(TO_STRING.apply(row)));
+        RecordReader<InternalRow> r1 = table.newRead().withFilter(predicate).createReader(splits);
+        r1.forEachRemaining(row -> a1.add(toString.apply(row)));
         assertThat(a1.size()).isEqualTo(5);
         assertThat(String.join("|", a1)).isEqualTo("1,1,300|1,2,400|1,3,100|1,6,300|1,5,100");
 
@@ -1003,7 +1000,7 @@ public class PrimaryKeyFileStoreTableTest extends FileStoreTableTestBase {
                         .withFilter(predicate)
                         .withIndexFilter(predicate)
                         .createReader(splits);
-        r2.forEachRemaining(row -> a2.add(TO_STRING.apply(row)));
+        r2.forEachRemaining(row -> a2.add(toString.apply(row)));
         assertThat(a2.size()).isEqualTo(2);
         assertThat(String.join("|", a2)).isEqualTo("1,3,100|1,5,100");
     }

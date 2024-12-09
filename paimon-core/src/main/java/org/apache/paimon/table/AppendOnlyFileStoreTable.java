@@ -74,8 +74,7 @@ class AppendOnlyFileStoreTable extends AbstractFileStoreTable {
     public FileIndexFilterPushDownVisitor fileIndexFilterPushDownVisitor() {
         CoreOptions options = coreOptions();
         if (options.fileIndexReadEnabled()) {
-            return options
-                    .indexColumnsOptions()
+            return options.indexColumnsOptions()
                     .createFilterPushDownPredicateVisitor(schema().logicalRowType());
         }
         return super.fileIndexFilterPushDownVisitor();

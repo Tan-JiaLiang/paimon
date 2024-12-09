@@ -81,7 +81,8 @@ public class FileIndexFilterFallbackPredicateVisitorTest {
                         Arrays.asList(
                                 new FieldRef(0, "a", DataTypes.INT()),
                                 new FieldRef(2, "c", DataTypes.INT())));
-        FileIndexFilterFallbackPredicateVisitor v1 = new FileIndexFilterFallbackPredicateVisitor(indexFields);
+        FileIndexFilterFallbackPredicateVisitor v1 =
+                new FileIndexFilterFallbackPredicateVisitor(indexFields);
         Optional<Predicate> r1 = v1.visit((CompoundPredicate) predicate);
         assertThat(r1).isPresent();
         assertThat(r1.get()).isEqualTo(new PredicateBuilder(rowType).equal(1, "b"));

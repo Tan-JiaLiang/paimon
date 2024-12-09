@@ -764,7 +764,7 @@ public class AppendOnlyFileStoreTableTest extends FileStoreTableTestBase {
         write.close();
         commit.close();
 
-        Function<InternalRow, String> TO_STRING =
+        Function<InternalRow, String> toString =
                 row -> row.getInt(0) + "," + row.getString(1).toString() + "," + row.getLong(2);
         Predicate predicate =
                 PredicateBuilder.and(
@@ -776,7 +776,7 @@ public class AppendOnlyFileStoreTableTest extends FileStoreTableTestBase {
         List<String> a1 = new ArrayList<>();
         RecordReader<InternalRow> r1 =
                 table.newRead().withFilter(predicate).createReader(plan.splits());
-        r1.forEachRemaining(row -> a1.add(TO_STRING.apply(row)));
+        r1.forEachRemaining(row -> a1.add(toString.apply(row)));
         assertThat(a1.size()).isEqualTo(5);
         assertThat(String.join("|", a1)).isEqualTo("1,A,1|1,B,2|1,C,3|1,A,1|1,A,1");
 
@@ -787,7 +787,7 @@ public class AppendOnlyFileStoreTableTest extends FileStoreTableTestBase {
                         .withFilter(predicate)
                         .withIndexFilter(predicate)
                         .createReader(plan.splits());
-        r2.forEachRemaining(row -> a2.add(TO_STRING.apply(row)));
+        r2.forEachRemaining(row -> a2.add(toString.apply(row)));
         assertThat(a2.size()).isEqualTo(3);
         assertThat(String.join("|", a2)).isEqualTo("1,A,1|1,A,1|1,A,1");
     }

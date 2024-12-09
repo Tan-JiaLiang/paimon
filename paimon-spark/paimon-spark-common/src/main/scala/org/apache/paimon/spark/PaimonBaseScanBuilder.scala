@@ -47,7 +47,13 @@ abstract class PaimonBaseScanBuilder(table: Table)
   protected var pushDownLimit: Option[Int] = None
 
   override def build(): Scan = {
-    PaimonScan(table, requiredSchema, pushedPredicates.map(_._2), pushedIndexPredicates, partitionFilters, pushDownLimit)
+    PaimonScan(
+      table,
+      requiredSchema,
+      pushedPredicates.map(_._2),
+      pushedIndexPredicates,
+      partitionFilters,
+      pushDownLimit)
   }
 
   /**

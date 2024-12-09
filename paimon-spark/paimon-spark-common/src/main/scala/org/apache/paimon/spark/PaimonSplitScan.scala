@@ -28,7 +28,12 @@ import org.apache.spark.sql.types.StructType
 
 class PaimonSplitScanBuilder(table: KnownSplitsTable) extends PaimonBaseScanBuilder(table) {
   override def build(): Scan = {
-    PaimonSplitScan(table, table.splits(), requiredSchema, pushedPredicates.map(_._2), pushedIndexPredicates)
+    PaimonSplitScan(
+      table,
+      table.splits(),
+      requiredSchema,
+      pushedPredicates.map(_._2),
+      pushedIndexPredicates)
   }
 }
 

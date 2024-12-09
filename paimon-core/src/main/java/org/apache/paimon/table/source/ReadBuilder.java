@@ -98,7 +98,9 @@ public interface ReadBuilder extends Serializable {
      */
     ReadBuilder withFilter(Predicate predicate);
 
-    /** Push index filters, when index is empty, fallback to use it to do filter in reader instead. */
+    /**
+     * Push index filters, when index is empty, fallback to use it to do filter in reader instead.
+     */
     ReadBuilder withIndexFilter(Predicate predicate);
 
     /** Push partition filter. */

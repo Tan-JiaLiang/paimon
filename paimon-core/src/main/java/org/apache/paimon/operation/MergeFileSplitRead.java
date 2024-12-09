@@ -244,7 +244,8 @@ public class MergeFileSplitRead implements SplitRead<KeyValue> {
         if (predicate == null) {
             return this;
         }
-        throw new UnsupportedOperationException("index should not be pushed down in the LSM merging reader");
+        throw new UnsupportedOperationException(
+                "index should not be pushed down in the LSM merging reader");
     }
 
     @Override

@@ -30,7 +30,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /** Visit the predicate and extract the file index fallback predicate. */
-public class FileIndexFilterFallbackPredicateVisitor implements PredicateVisitor<Optional<Predicate>> {
+public class FileIndexFilterFallbackPredicateVisitor
+        implements PredicateVisitor<Optional<Predicate>> {
 
     private final Set<FieldRef> fields;
 

@@ -20,12 +20,13 @@ package org.apache.paimon.spark.sql
 
 import org.apache.paimon.spark.{PaimonScan, PaimonSparkTestBase, SparkTable}
 import org.apache.paimon.table.source.DataSplit
+
+import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.sql.catalyst.expressions.{AttributeReference, EqualTo, Expression, Literal}
 import org.apache.spark.sql.catalyst.plans.logical.Filter
 import org.apache.spark.sql.catalyst.trees.TreePattern.DYNAMIC_PRUNING_SUBQUERY
 import org.apache.spark.sql.connector.read.{ScanBuilder, SupportsPushDownLimit}
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
-import org.apache.spark.sql.{DataFrame, Row}
 import org.junit.jupiter.api.Assertions
 
 class PaimonPushDownTest extends PaimonSparkTestBase {
