@@ -18,6 +18,7 @@
 
 package org.apache.paimon.fileindex;
 
+import org.apache.paimon.fileindex.aggregate.FileIndexAggregatePushDownAnalyzer;
 import org.apache.paimon.fs.SeekableInputStream;
 import org.apache.paimon.options.Options;
 import org.apache.paimon.types.DataType;
@@ -35,6 +36,8 @@ public interface FileIndexer {
     FileIndexReader createReader(SeekableInputStream inputStream, int start, int length);
 
     FileIndexFilterPushDownAnalyzer createFilterPushDownAnalyzer();
+
+    FileIndexAggregatePushDownAnalyzer createAggregatePushDownAnalyzer();
 
     static FileIndexer create(String type, DataType dataType, Options options) {
         FileIndexerFactory fileIndexerFactory = FileIndexerFactoryUtils.load(type);

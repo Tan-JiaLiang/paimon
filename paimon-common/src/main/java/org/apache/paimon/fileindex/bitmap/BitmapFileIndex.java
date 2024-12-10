@@ -19,11 +19,15 @@
 package org.apache.paimon.fileindex.bitmap;
 
 import org.apache.paimon.data.Timestamp;
+import org.apache.paimon.fileindex.FileIndexAggregator;
 import org.apache.paimon.fileindex.FileIndexFilterPushDownAnalyzer;
 import org.apache.paimon.fileindex.FileIndexReader;
 import org.apache.paimon.fileindex.FileIndexResult;
 import org.apache.paimon.fileindex.FileIndexWriter;
 import org.apache.paimon.fileindex.FileIndexer;
+import org.apache.paimon.fileindex.aggregate.Count;
+import org.apache.paimon.fileindex.aggregate.CountStar;
+import org.apache.paimon.fileindex.aggregate.FileIndexAggregatePushDownAnalyzer;
 import org.apache.paimon.fs.SeekableInputStream;
 import org.apache.paimon.options.Options;
 import org.apache.paimon.predicate.FieldRef;
@@ -43,6 +47,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -66,7 +71,7 @@ public class BitmapFileIndex implements FileIndexer {
     public FileIndexReader createReader(
             SeekableInputStream seekableInputStream, int start, int length) {
         try {
-            return new Reader(seekableInputStream, start, length);
+            return new Reader(seekableInputStream, start, dataType);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -75,6 +80,11 @@ public class BitmapFileIndex implements FileIndexer {
     @Override
     public FileIndexFilterPushDownAnalyzer createFilterPushDownAnalyzer() {
         return new FilterPushDownAnalyzer();
+    }
+
+    @Override
+    public FileIndexAggregatePushDownAnalyzer createAggregatePushDownAnalyzer() {
+        return new AggregatePushDownAnalyzer();
     }
 
     private static class Writer extends FileIndexWriter {
@@ -170,6 +180,7 @@ public class BitmapFileIndex implements FileIndexer {
 
         private final SeekableInputStream seekableInputStream;
         private final int headStart;
+        private final DataType dataType;
         private int bodyStart;
         private final Map<Object, RoaringBitmap32> bitmaps = new LinkedHashMap<>();
 
@@ -177,9 +188,10 @@ public class BitmapFileIndex implements FileIndexer {
         private BitmapFileIndexMeta bitmapFileIndexMeta;
         private Function<Object, Object> valueMapper;
 
-        public Reader(SeekableInputStream seekableInputStream, int start, int length) {
+        public Reader(SeekableInputStream seekableInputStream, int start, DataType dataType) {
             this.seekableInputStream = seekableInputStream;
             this.headStart = start;
+            this.dataType = dataType;
         }
 
         @Override
@@ -222,6 +234,35 @@ public class BitmapFileIndex implements FileIndexer {
         @Override
         public FileIndexResult visitIsNotNull(FieldRef fieldRef) {
             return visitNotIn(fieldRef, Collections.singletonList(null));
+        }
+
+        @Override
+        public Optional<FileIndexAggregator> visit(CountStar func) {
+            return Optional.of(
+                    (result) -> {
+                        readInternalMeta(dataType);
+                        if (result == null) {
+                            return bitmapFileIndexMeta.getRowCount();
+                        }
+                        return ((BitmapIndexResult) result).get().getCardinality();
+                    }
+            );
+        }
+
+        @Override
+        public Optional<FileIndexAggregator> visit(Count func) {
+            return Optional.of(
+                    (result) -> {
+                        readInternalMeta(dataType);
+                        if (result == null) {
+                            return bitmapFileIndexMeta.getRowCount();
+                        }
+                        RoaringBitmap32 nullValueBitmap =
+                                bitmaps.getOrDefault(valueMapper.apply(null), readBitmap(null));
+                        RoaringBitmap32 foundSet = ((BitmapIndexResult) result).get();
+                        return foundSet.getCardinality() - nullValueBitmap.getCardinality();
+                    }
+            );
         }
 
         private RoaringBitmap32 getInListResultBitmap(List<Object> literals) {
@@ -307,6 +348,24 @@ public class BitmapFileIndex implements FileIndexer {
 
         @Override
         public Boolean visitIsNotNull(FieldRef fieldRef) {
+            return true;
+        }
+    }
+
+    private static class AggregatePushDownAnalyzer extends FileIndexAggregatePushDownAnalyzer {
+
+        @Override
+        public Boolean visit(FieldRef field) {
+            return true;
+        }
+
+        @Override
+        public Boolean visit(CountStar func) {
+            return true;
+        }
+
+        @Override
+        public Boolean visit(Count func) {
             return true;
         }
     }

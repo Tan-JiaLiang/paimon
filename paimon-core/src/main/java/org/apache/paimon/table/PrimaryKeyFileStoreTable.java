@@ -22,6 +22,7 @@ import org.apache.paimon.CoreOptions;
 import org.apache.paimon.KeyValue;
 import org.apache.paimon.KeyValueFileStore;
 import org.apache.paimon.fileindex.FileIndexFilterPushDownVisitor;
+import org.apache.paimon.fileindex.aggregate.FileIndexAggregatePushDownVisitor;
 import org.apache.paimon.fs.FileIO;
 import org.apache.paimon.fs.Path;
 import org.apache.paimon.iceberg.IcebergOptions;
@@ -201,5 +202,15 @@ class PrimaryKeyFileStoreTable extends AbstractFileStoreTable {
                     .createFilterPushDownPredicateVisitor(schema().logicalRowType());
         }
         return super.fileIndexFilterPushDownVisitor();
+    }
+
+    @Override
+    public FileIndexAggregatePushDownVisitor fileIndexAggregatePushDownVisitor() {
+        CoreOptions options = coreOptions();
+        if (options.fileIndexReadEnabled() && options.deletionVectorsEnabled()) {
+            return options.indexColumnsOptions()
+                    .createAggregatePushDownPredicateVisitor(schema().logicalRowType());
+        }
+        return super.fileIndexAggregatePushDownVisitor();
     }
 }

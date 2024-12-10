@@ -22,6 +22,7 @@ import org.apache.paimon.AppendOnlyFileStore;
 import org.apache.paimon.CoreOptions;
 import org.apache.paimon.data.InternalRow;
 import org.apache.paimon.fileindex.FileIndexFilterPushDownVisitor;
+import org.apache.paimon.fileindex.aggregate.FileIndexAggregatePushDownVisitor;
 import org.apache.paimon.fs.FileIO;
 import org.apache.paimon.fs.Path;
 import org.apache.paimon.iceberg.AppendOnlyIcebergCommitCallback;
@@ -81,6 +82,16 @@ class AppendOnlyFileStoreTable extends AbstractFileStoreTable {
     }
 
     @Override
+    public FileIndexAggregatePushDownVisitor fileIndexAggregatePushDownVisitor() {
+        CoreOptions options = coreOptions();
+        if (options.fileIndexReadEnabled()) {
+            return options.indexColumnsOptions()
+                    .createAggregatePushDownPredicateVisitor(schema().logicalRowType());
+        }
+        return super.fileIndexAggregatePushDownVisitor();
+    }
+
+    @Override
     public AppendOnlyFileStore store() {
         if (lazyStore == null) {
             lazyStore =
@@ -134,6 +145,12 @@ class AppendOnlyFileStoreTable extends AbstractFileStoreTable {
             @Override
             public InnerTableRead withIndexFilter(Predicate indexPredicate) {
                 read.withIndexFilter(indexPredicate);
+                return this;
+            }
+
+            @Override
+            public InnerTableRead withAggregate(Object aggregate) {
+                read.withAggregate(aggregate);
                 return this;
             }
 

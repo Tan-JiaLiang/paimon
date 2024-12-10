@@ -18,11 +18,15 @@
 
 package org.apache.paimon.utils;
 
+import org.roaringbitmap.IntIterator;
+import org.roaringbitmap.PeekableIntIterator;
+
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.stream.IntStream;
 
 /* This file is based on source code from the RoaringBitmap Project (http://roaringbitmap.org/), licensed by the Apache
  * Software Foundation (ASF) under the Apache License, Version 2.0. See the NOTICE file distributed with this work for
@@ -68,6 +72,169 @@ public class BitSliceIndexRoaringBitmap {
 
     public RoaringBitmap32 isNotNull() {
         return ebm.clone();
+    }
+
+    public Long min(RoaringBitmap32 foundSet) {
+        if (ebm.isEmpty()) {
+            return null;
+        }
+        RoaringBitmap32 bitmap = bottomK(foundSet, 1);
+        if (bitmap.isEmpty()) {
+            return null;
+        }
+        return valueAt(bitmap.first());
+    }
+
+    public Long min() {
+        if (ebm.isEmpty()) {
+            return null;
+        }
+        return min;
+    }
+
+    public Long max(RoaringBitmap32 foundSet) {
+        if (ebm.isEmpty()) {
+            return null;
+        }
+        RoaringBitmap32 bitmap = topK(foundSet, 1);
+        if (bitmap.isEmpty()) {
+            return null;
+        }
+        return valueAt(bitmap.first());
+    }
+
+    public Long max() {
+        return max(ebm);
+    }
+
+    public Long valueAt(int rid) {
+        if (!ebm.contains(rid)) {
+            return null;
+        }
+        long value = 0;
+        for (int i = 0; i < slices.length; i++) {
+            if (slices[i].contains(rid)) {
+                value |= (1L << i);
+            }
+        }
+        return value + min;
+    }
+
+    /**
+     * Base the O'Neil bit-sliced index sum algorithm.
+     *
+     * <p>See <a href="https://dl.acm.org/doi/10.1145/253262.253268">Improved query performance with
+     * variant indexes</a>
+     */
+    public Long sum(RoaringBitmap32 foundSet) {
+        if (foundSet == null || foundSet.isEmpty()) {
+            return null;
+        }
+
+        return IntStream.range(0, slices.length)
+                        .mapToLong(
+                                x ->
+                                        (1L << x)
+                                                * RoaringBitmap32.andCardinality(
+                                                        slices[x], foundSet))
+                        .sum()
+                + (min * RoaringBitmap32.andCardinality(ebm, foundSet));
+    }
+
+    public Long sum() {
+        return sum(ebm);
+    }
+
+    /**
+     * Base the O'Neil bit-sliced index TopK algorithm.
+     *
+     * <p>See <a href="https://dl.acm.org/doi/10.1145/376284.375669">Bit-Sliced Index Arithmetic</a>
+     */
+    public RoaringBitmap32 topK(RoaringBitmap32 foundSet, int k) {
+        if (foundSet == null || foundSet.isEmpty() || k == 0) {
+            return new RoaringBitmap32();
+        }
+
+        if (k < 0) {
+            throw new IllegalArgumentException("the k param can not be negative in topK, k=" + k);
+        }
+
+        RoaringBitmap32 g = new RoaringBitmap32();
+        RoaringBitmap32 e = RoaringBitmap32.and(ebm, foundSet);
+
+        for (int i = slices.length - 1; i >= 0; i--) {
+            RoaringBitmap32 x = RoaringBitmap32.or(g, RoaringBitmap32.and(e, slices[i]));
+            long n = x.getCardinality();
+            if (n > k) {
+                e = RoaringBitmap32.and(e, slices[i]);
+            } else if (n < k) {
+                g = x;
+                e = RoaringBitmap32.andNot(e, slices[i]);
+            } else {
+                e = RoaringBitmap32.and(e, slices[i]);
+                break;
+            }
+        }
+
+        // only k results should be returned
+        RoaringBitmap32 f = RoaringBitmap32.or(g, e);
+        long n = f.getCardinality() - k;
+        if (n > 0) {
+            PeekableIntIterator iterator = e.getIntIterator();
+            while (iterator.hasNext() && n > 0) {
+                f.remove(iterator.next());
+                n--;
+            }
+        }
+        return f;
+    }
+
+    public RoaringBitmap32 topK(int k) {
+        return topK(ebm, k);
+    }
+
+    public RoaringBitmap32 bottomK(RoaringBitmap32 foundSet, int k) {
+        if (foundSet == null || foundSet.isEmpty() || k == 0) {
+            return new RoaringBitmap32();
+        }
+
+        if (k < 0) {
+            throw new IllegalArgumentException(
+                    "the k param can not be negative in bottomK, k=" + k);
+        }
+
+        RoaringBitmap32 g = new RoaringBitmap32();
+        RoaringBitmap32 e = RoaringBitmap32.and(ebm, foundSet);
+
+        for (int i = slices.length - 1; i >= 0; i--) {
+            RoaringBitmap32 x = RoaringBitmap32.or(g, RoaringBitmap32.andNot(e, slices[i]));
+            long n = x.getCardinality();
+            if (n > k) {
+                e = RoaringBitmap32.andNot(e, slices[i]);
+            } else if (n < k) {
+                g = x;
+                e = RoaringBitmap32.and(e, slices[i]);
+            } else {
+                e = RoaringBitmap32.andNot(e, slices[i]);
+                break;
+            }
+        }
+
+        // only k results should be returned
+        RoaringBitmap32 f = RoaringBitmap32.or(g, e);
+        long n = f.getCardinality() - k;
+        if (n > 0) {
+            IntIterator iterator = e.getIntIterator();
+            while (iterator.hasNext() && n > 0) {
+                f.remove(iterator.next());
+                n--;
+            }
+        }
+        return f;
+    }
+
+    public RoaringBitmap32 bottomK(int k) {
+        return bottomK(ebm, k);
     }
 
     @Override

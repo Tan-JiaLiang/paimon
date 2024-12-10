@@ -116,6 +116,12 @@ public class ReadBuilderImpl implements ReadBuilder {
     }
 
     @Override
+    public ReadBuilder withAggregate(Object aggregate) {
+        this.aggregate = aggregate;
+        return this;
+    }
+
+    @Override
     public ReadBuilder withLimit(int limit) {
         this.limit = limit;
         return this;
@@ -186,6 +192,9 @@ public class ReadBuilderImpl implements ReadBuilder {
         }
         if (indexFilter != null) {
             read.withIndexFilter(indexFilter);
+        }
+        if (aggregate != null) {
+            read.withAggregate(aggregate);
         }
         return read;
     }

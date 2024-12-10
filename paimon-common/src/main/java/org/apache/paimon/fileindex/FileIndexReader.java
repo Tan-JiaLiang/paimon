@@ -18,10 +18,17 @@
 
 package org.apache.paimon.fileindex;
 
+import org.apache.paimon.fileindex.aggregate.AggregateVisitor;
+import org.apache.paimon.fileindex.aggregate.Count;
+import org.apache.paimon.fileindex.aggregate.CountStar;
+import org.apache.paimon.fileindex.aggregate.Max;
+import org.apache.paimon.fileindex.aggregate.Min;
+import org.apache.paimon.fileindex.aggregate.Sum;
 import org.apache.paimon.predicate.FieldRef;
 import org.apache.paimon.predicate.FunctionVisitor;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.apache.paimon.fileindex.FileIndexResult.REMAIN;
 
@@ -29,7 +36,8 @@ import static org.apache.paimon.fileindex.FileIndexResult.REMAIN;
  * Read file index from serialized bytes. Return true, means we need to search this file, else means
  * needn't.
  */
-public abstract class FileIndexReader implements FunctionVisitor<FileIndexResult> {
+public abstract class FileIndexReader
+        implements FunctionVisitor<FileIndexResult>, AggregateVisitor<Optional<FileIndexAggregator>> {
 
     @Override
     public FileIndexResult visitIsNotNull(FieldRef fieldRef) {
@@ -118,5 +126,35 @@ public abstract class FileIndexReader implements FunctionVisitor<FileIndexResult
     @Override
     public FileIndexResult visitOr(List<FileIndexResult> children) {
         throw new UnsupportedOperationException("Should not invoke this");
+    }
+
+    @Override
+    public Optional<FileIndexAggregator> visit(FieldRef field) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<FileIndexAggregator> visit(CountStar func) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<FileIndexAggregator> visit(Count func) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<FileIndexAggregator> visit(Min func) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<FileIndexAggregator> visit(Max func) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<FileIndexAggregator> visit(Sum func) {
+        return Optional.empty();
     }
 }

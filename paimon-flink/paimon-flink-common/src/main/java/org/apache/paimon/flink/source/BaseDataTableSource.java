@@ -18,10 +18,14 @@
 
 package org.apache.paimon.flink.source;
 
+import org.apache.flink.streaming.api.functions.source.SourceFunction;
+import org.apache.flink.table.connector.source.SourceFunctionProvider;
 import org.apache.paimon.CoreOptions;
 import org.apache.paimon.CoreOptions.ChangelogProducer;
 import org.apache.paimon.CoreOptions.LogChangelogMode;
 import org.apache.paimon.CoreOptions.LogConsistency;
+import org.apache.paimon.fileindex.aggregate.AggregateFunction;
+import org.apache.paimon.fileindex.aggregate.FileIndexAggregatePushDownVisitor;
 import org.apache.paimon.flink.FlinkConnectorOptions.WatermarkEmitStrategy;
 import org.apache.paimon.flink.PaimonDataStreamScanProvider;
 import org.apache.paimon.flink.log.LogSourceProvider;
@@ -55,6 +59,7 @@ import org.apache.flink.table.types.DataType;
 import javax.annotation.Nullable;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -237,6 +242,21 @@ public abstract class BaseDataTableSource extends FlinkTableSource
         };
     }
 
+    private ScanRuntimeProvider createFileIndexAggregateScan() {
+        return new SourceFunctionProvider() {
+            @Override
+            public SourceFunction<RowData> createSourceFunction() {
+                return new LocalAggregateSource(null, null);
+            }
+
+            @Override
+            public boolean isBounded() {
+                return true;
+            }
+        };
+
+    }
+
     protected abstract List<String> dynamicPartitionFilteringFields();
 
     @Override
@@ -332,18 +352,46 @@ public abstract class BaseDataTableSource extends FlinkTableSource
             return false;
         }
 
-        if (!aggregateExpressions
+        if (aggregateExpressions
                 .get(0)
                 .getFunctionDefinition()
                 .getClass()
                 .getName()
                 .equals(
                         "org.apache.flink.table.planner.functions.aggfunctions.Count1AggFunction")) {
-            return false;
+            isBatchCountStar = true;
+            return true;
         }
 
-        isBatchCountStar = true;
-        return true;
+        // todo: 首先，将不同引擎的Aggregate函数，转换成paimon内置的Aggregate（像Predicate一样组装）
+        List<AggregateFunction> functions = new ArrayList<>();
+
+        // todo: 其次，通过visitor的方式判断是否所有aggregate函数都支持下推
+        FileIndexAggregatePushDownVisitor indexPushDownVisitor =
+                table.fileIndexAggregatePushDownVisitor();
+        for (AggregateFunction function : functions) {
+            if (!function.visit(indexPushDownVisitor)) {
+                return false;
+            }
+        }
+
+        // 支持，则返回对应的计算函数 和 fallback函数
+        // 最终，组装成IndexScanner，然后不同引擎的SourceFunction去包装IndexScanner
+
+        // 如何判断aggregate是否可以直接下推？
+
+        // zone map索引可以加速min/max/count
+        // bitmap索引可以加速count/count(字段)，where条件可以是bitmap & bsi索引
+        // bsi索可以加速min/max/count/count(字段)/sum，where条件可以是bitmap & bsi索引
+
+        // 判断传入：索引，过滤条件，聚合函数
+        // 输出：生成一个IndexScanner，这个IndexScanner是paimon内部的，flink & spark & starrocks & trino直接开箱即用
+        // 执行时：问索引，这些函数如何计算，把过滤条件传进去（考虑有索引怎么计算，没有索引又怎么算）
+        // 首先判断能否直接用zone map索引返回，如果不能，再判断bitmap索引能否返回，如果不能，fallback to codegen
+
+        // aggregate push down：输入索引，过滤条件，聚合函数。输出Optional<IndexScanner>
+
+        return false;
     }
 
     @Override

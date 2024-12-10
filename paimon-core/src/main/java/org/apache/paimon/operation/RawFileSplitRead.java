@@ -24,6 +24,7 @@ import org.apache.paimon.deletionvectors.ApplyDeletionVectorReader;
 import org.apache.paimon.deletionvectors.DeletionVector;
 import org.apache.paimon.disk.IOManager;
 import org.apache.paimon.fileindex.FileIndexFilterFallbackPredicateVisitor;
+import org.apache.paimon.fileindex.FileIndexPredicate;
 import org.apache.paimon.fileindex.FileIndexResult;
 import org.apache.paimon.fileindex.bitmap.ApplyBitmapIndexRecordReader;
 import org.apache.paimon.fileindex.bitmap.BitmapIndexResult;
@@ -39,6 +40,7 @@ import org.apache.paimon.mergetree.compact.ConcatRecordReader;
 import org.apache.paimon.partition.PartitionUtils;
 import org.apache.paimon.predicate.FieldRef;
 import org.apache.paimon.predicate.Predicate;
+import org.apache.paimon.predicate.PredicateBuilder;
 import org.apache.paimon.reader.EmptyFileRecordReader;
 import org.apache.paimon.reader.FileRecordReader;
 import org.apache.paimon.reader.ReaderSupplier;
@@ -84,8 +86,10 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
     private final boolean fileIndexReadEnabled;
 
     private RowType readRowType;
-    @Nullable private List<Predicate> filters;
-    @Nullable private Predicate indexFilter;
+    @Nullable
+    private List<Predicate> filters;
+    @Nullable
+    private Predicate indexFilter;
 
     public RawFileSplitRead(
             FileIO fileIO,
@@ -132,6 +136,11 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
     @Override
     public SplitRead<InternalRow> withIndexFilter(@Nullable Predicate indexFilter) {
         this.indexFilter = indexFilter;
+        return this;
+    }
+
+    public SplitRead<InternalRow> withAggregate(@Nullable Object aggregate) {
+        this.aggregate = aggregate;
         return this;
     }
 
@@ -187,6 +196,7 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
 
             IOExceptionSupplier<DeletionVector> dvFactory =
                     dvFactories == null ? null : dvFactories.get(i);
+            // todo: aggregate换另外一个方法
             suppliers.add(
                     () ->
                             createFileReader(
@@ -220,6 +230,80 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
                 return new EmptyFileRecordReader<>();
             }
         }
+
+        FormatReaderContext formatReaderContext =
+                new FormatReaderContext(
+                        fileIO,
+                        dataFilePathFactory.toPath(file.fileName()),
+                        file.fileSize(),
+                        fileIndexResult);
+        FileRecordReader<InternalRow> fileRecordReader =
+                new DataFileRecordReader(
+                        bulkFormatMapping.getReaderFactory(),
+                        formatReaderContext,
+                        bulkFormatMapping.getIndexMapping(),
+                        bulkFormatMapping.getCastMapping(),
+                        PartitionUtils.create(bulkFormatMapping.getPartitionPair(), partition));
+
+        if (fileIndexResult instanceof BitmapIndexResult) {
+            fileRecordReader =
+                    new ApplyBitmapIndexRecordReader(
+                            fileRecordReader, (BitmapIndexResult) fileIndexResult);
+        }
+
+        Set<FieldRef> fields =
+                fileIndexResult == null ? Collections.emptySet() : fileIndexResult.applyIndexes();
+        if (indexFilter != null) {
+            Optional<Predicate> fallbackPredicate =
+                    indexFilter.visit(new FileIndexFilterFallbackPredicateVisitor(fields));
+            if (fallbackPredicate.isPresent()) {
+                fileRecordReader = fileRecordReader.filter(fallbackPredicate.get()::test);
+            }
+        }
+
+        DeletionVector deletionVector = dvFactory == null ? null : dvFactory.get();
+        if (deletionVector != null && !deletionVector.isEmpty()) {
+            fileRecordReader = new ApplyDeletionVectorReader(fileRecordReader, deletionVector);
+        }
+
+        return fileRecordReader;
+    }
+
+
+    private FileRecordReader<InternalRow> createLocalAggregateReader(
+            BinaryRow partition,
+            DataFileMeta file,
+            DataFilePathFactory dataFilePathFactory,
+            BulkFormatMapping bulkFormatMapping,
+            IOExceptionSupplier<DeletionVector> dvFactory)
+            throws IOException {
+        if (!fileIndexReadEnabled) {
+            throw new IllegalArgumentException(
+                    "option file-index.read.enabled should not be false when aggregate push down.");
+        }
+
+        TableSchema dataSchema = bulkFormatMapping.getDataSchema();
+        List<Predicate> dataFilters = bulkFormatMapping.getDataFilters();
+        FileIndexResult fileIndexResult =
+                FileIndexEvaluator.evaluate(
+                        fileIO,
+                        dataSchema,
+                        dataFilters,
+                        dataFilePathFactory,
+                        file);
+        if (!fileIndexResult.remain()) {
+            return new EmptyFileRecordReader<>();
+        }
+
+        // 拿索引
+        byte[] embeddedIndex = file.embeddedIndex();
+        if (embeddedIndex != null) {
+            try (FileIndexPredicate predicate =
+                         new FileIndexPredicate(embeddedIndex, dataSchema.logicalRowType())) {
+
+            }
+        }
+
 
         FormatReaderContext formatReaderContext =
                 new FormatReaderContext(

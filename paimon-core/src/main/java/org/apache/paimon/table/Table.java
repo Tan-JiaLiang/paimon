@@ -22,6 +22,8 @@ import org.apache.paimon.Snapshot;
 import org.apache.paimon.annotation.Experimental;
 import org.apache.paimon.annotation.Public;
 import org.apache.paimon.fileindex.FileIndexFilterPushDownVisitor;
+import org.apache.paimon.fileindex.aggregate.FileIndexAggregatePushDownAnalyzer;
+import org.apache.paimon.fileindex.aggregate.FileIndexAggregatePushDownVisitor;
 import org.apache.paimon.manifest.IndexManifestEntry;
 import org.apache.paimon.manifest.ManifestEntry;
 import org.apache.paimon.manifest.ManifestFileMeta;
@@ -114,6 +116,12 @@ public interface Table extends Serializable {
     @Experimental
     default FileIndexFilterPushDownVisitor fileIndexFilterPushDownVisitor() {
         return new FileIndexFilterPushDownVisitor();
+    }
+
+    /** Visitor to check if index can push the aggregate down. */
+    @Experimental
+    default FileIndexAggregatePushDownVisitor fileIndexAggregatePushDownVisitor() {
+        return new FileIndexAggregatePushDownVisitor();
     }
 
     /** Rollback table's state to a specific snapshot. */

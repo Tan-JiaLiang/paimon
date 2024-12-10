@@ -43,6 +43,13 @@ public interface InnerTableRead extends TableRead {
         throw new UnsupportedOperationException();
     }
 
+    default InnerTableRead withAggregate(Object aggregate) {
+        if (aggregate == null) {
+            return this;
+        }
+        throw new UnsupportedOperationException();
+    }
+
     /** Use {@link #withReadType(RowType)} instead. */
     @Deprecated
     default InnerTableRead withProjection(int[] projection) {

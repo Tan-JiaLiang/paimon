@@ -23,6 +23,7 @@ import org.apache.paimon.fileindex.FileIndexReader;
 import org.apache.paimon.fileindex.FileIndexResult;
 import org.apache.paimon.fileindex.FileIndexWriter;
 import org.apache.paimon.fileindex.FileIndexer;
+import org.apache.paimon.fileindex.aggregate.FileIndexAggregatePushDownAnalyzer;
 import org.apache.paimon.fs.SeekableInputStream;
 import org.apache.paimon.options.Options;
 import org.apache.paimon.predicate.FieldRef;
@@ -86,6 +87,11 @@ public class BloomFilterFileIndex implements FileIndexer {
         return new FilterPushDownAnalyzer();
     }
 
+    @Override
+    public FileIndexAggregatePushDownAnalyzer createAggregatePushDownAnalyzer() {
+        return new AggregatePushDownAnalyzer();
+    }
+
     private static class Writer extends FileIndexWriter {
 
         private final BloomFilter64 filter;
@@ -141,4 +147,6 @@ public class BloomFilterFileIndex implements FileIndexer {
     }
 
     private static class FilterPushDownAnalyzer extends FileIndexFilterPushDownAnalyzer {}
+
+    private static class AggregatePushDownAnalyzer extends FileIndexAggregatePushDownAnalyzer {}
 }

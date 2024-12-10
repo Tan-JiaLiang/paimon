@@ -142,6 +142,8 @@ public interface ReadBuilder extends Serializable {
         return withProjection(Arrays.stream(projection).mapToInt(arr -> arr[0]).toArray());
     }
 
+    ReadBuilder withAggregate(Object aggregate);
+
     /** the row number pushed down. */
     ReadBuilder withLimit(int limit);
 

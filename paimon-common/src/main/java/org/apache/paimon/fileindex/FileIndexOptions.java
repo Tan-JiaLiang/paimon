@@ -19,6 +19,8 @@
 package org.apache.paimon.fileindex;
 
 import org.apache.paimon.CoreOptions;
+import org.apache.paimon.fileindex.aggregate.FileIndexAggregatePushDownAnalyzer;
+import org.apache.paimon.fileindex.aggregate.FileIndexAggregatePushDownVisitor;
 import org.apache.paimon.options.Options;
 import org.apache.paimon.types.DataField;
 import org.apache.paimon.types.DataTypeRoot;
@@ -210,6 +212,45 @@ public class FileIndexOptions {
             }
         }
         return new FileIndexFilterPushDownVisitor(analyzers);
+    }
+
+    public FileIndexAggregatePushDownVisitor createAggregatePushDownPredicateVisitor(RowType rowType) {
+        Map<String, List<FileIndexAggregatePushDownAnalyzer>> analyzers = new HashMap<>();
+        for (Map.Entry<Column, Map<String, Options>> entry : indexTypeOptions.entrySet()) {
+            Column column = entry.getKey();
+            for (Map.Entry<String, Options> typeEntry : entry.getValue().entrySet()) {
+                String key;
+                FileIndexAggregatePushDownAnalyzer analyzer;
+                DataField field = rowType.getField(column.columnName);
+                Options options = typeEntry.getValue();
+                if (column.isNestedColumn) {
+                    if (field.type().getTypeRoot() != DataTypeRoot.MAP) {
+                        throw new IllegalArgumentException(
+                                "Column "
+                                        + column.columnName
+                                        + " is nested column, but is not map type. Only should map type yet.");
+                    }
+                    MapType mapType = (MapType) field.type();
+                    Options mapTopLevelOptions =
+                            getMapTopLevelOptions(column.columnName, typeEntry.getKey());
+                    key = FileIndexCommon.toMapKey(column.columnName, column.nestedColumnName);
+                    analyzer =
+                            FileIndexer.create(
+                                            typeEntry.getKey(),
+                                            mapType.getValueType(),
+                                            new Options(
+                                                    mapTopLevelOptions.toMap(), options.toMap()))
+                                    .createAggregatePushDownAnalyzer();
+                } else {
+                    key = column.columnName;
+                    analyzer =
+                            FileIndexer.create(typeEntry.getKey(), field.type(), options)
+                                    .createAggregatePushDownAnalyzer();
+                }
+                analyzers.computeIfAbsent(key, k -> new ArrayList<>()).add(analyzer);
+            }
+        }
+        return new FileIndexAggregatePushDownVisitor(analyzers);
     }
 
     public boolean isEmpty() {

@@ -20,11 +20,18 @@ package org.apache.paimon.fileindex.bsi;
 
 import org.apache.paimon.data.Decimal;
 import org.apache.paimon.data.Timestamp;
+import org.apache.paimon.fileindex.FileIndexAggregator;
 import org.apache.paimon.fileindex.FileIndexFilterPushDownAnalyzer;
 import org.apache.paimon.fileindex.FileIndexReader;
 import org.apache.paimon.fileindex.FileIndexResult;
 import org.apache.paimon.fileindex.FileIndexWriter;
 import org.apache.paimon.fileindex.FileIndexer;
+import org.apache.paimon.fileindex.aggregate.Count;
+import org.apache.paimon.fileindex.aggregate.CountStar;
+import org.apache.paimon.fileindex.aggregate.FileIndexAggregatePushDownAnalyzer;
+import org.apache.paimon.fileindex.aggregate.Max;
+import org.apache.paimon.fileindex.aggregate.Min;
+import org.apache.paimon.fileindex.aggregate.Sum;
 import org.apache.paimon.fileindex.bitmap.BitmapIndexResult;
 import org.apache.paimon.fs.SeekableInputStream;
 import org.apache.paimon.options.Options;
@@ -51,6 +58,7 @@ import java.io.DataOutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
 
 /** implementation of BSI file index. */
@@ -108,19 +116,24 @@ public class BitSliceIndexBitmapFileIndex implements FileIndexer {
         return new FilterPushDownAnalyzer();
     }
 
+    @Override
+    public FileIndexAggregatePushDownAnalyzer createAggregatePushDownAnalyzer() {
+        return new AggregatePushDownAnalyzer();
+    }
+
     private static class Writer extends FileIndexWriter {
 
-        private final Function<Object, Long> valueMapper;
+        private final Function<Object, Long> inputValueMapper;
         private final StatsCollectList collector;
 
         public Writer(DataType dataType) {
-            this.valueMapper = getValueMapper(dataType);
+            this.inputValueMapper = getInputValueMapper(dataType);
             this.collector = new StatsCollectList();
         }
 
         @Override
         public void write(Object key) {
-            collector.add(valueMapper.apply(key));
+            collector.add(inputValueMapper.apply(key));
         }
 
         @Override
@@ -199,7 +212,8 @@ public class BitSliceIndexBitmapFileIndex implements FileIndexer {
         private final int rowNumber;
         private final BitSliceIndexRoaringBitmap positive;
         private final BitSliceIndexRoaringBitmap negative;
-        private final Function<Object, Long> valueMapper;
+        private final Function<Object, Long> inputValueMapper;
+        private final Function<Long, Object> outputValueMapper;
 
         public Reader(
                 DataType dataType,
@@ -209,7 +223,8 @@ public class BitSliceIndexBitmapFileIndex implements FileIndexer {
             this.rowNumber = rowNumber;
             this.positive = positive;
             this.negative = negative;
-            this.valueMapper = getValueMapper(dataType);
+            this.inputValueMapper = getInputValueMapper(dataType);
+            this.outputValueMapper = getOutputValueMapper(dataType);
         }
 
         @Override
@@ -247,7 +262,7 @@ public class BitSliceIndexBitmapFileIndex implements FileIndexer {
                     Collections.singleton(fieldRef),
                     () ->
                             literals.stream()
-                                    .map(valueMapper)
+                                    .map(inputValueMapper)
                                     .map(
                                             value -> {
                                                 if (value < 0) {
@@ -270,7 +285,7 @@ public class BitSliceIndexBitmapFileIndex implements FileIndexer {
                                 RoaringBitmap32.or(positive.isNotNull(), negative.isNotNull());
                         RoaringBitmap32 eq =
                                 literals.stream()
-                                        .map(valueMapper)
+                                        .map(inputValueMapper)
                                         .map(
                                                 value -> {
                                                     if (value < 0) {
@@ -291,7 +306,7 @@ public class BitSliceIndexBitmapFileIndex implements FileIndexer {
             return new BitmapIndexResult(
                     Collections.singleton(fieldRef),
                     () -> {
-                        Long value = valueMapper.apply(literal);
+                        Long value = inputValueMapper.apply(literal);
                         if (value < 0) {
                             return negative.gt(Math.abs(value));
                         } else {
@@ -305,7 +320,7 @@ public class BitSliceIndexBitmapFileIndex implements FileIndexer {
             return new BitmapIndexResult(
                     Collections.singleton(fieldRef),
                     () -> {
-                        Long value = valueMapper.apply(literal);
+                        Long value = inputValueMapper.apply(literal);
                         if (value < 0) {
                             return negative.gte(Math.abs(value));
                         } else {
@@ -319,7 +334,7 @@ public class BitSliceIndexBitmapFileIndex implements FileIndexer {
             return new BitmapIndexResult(
                     Collections.singleton(fieldRef),
                     () -> {
-                        Long value = valueMapper.apply(literal);
+                        Long value = inputValueMapper.apply(literal);
                         if (value < 0) {
                             return RoaringBitmap32.or(
                                     positive.isNotNull(), negative.lt(Math.abs(value)));
@@ -334,13 +349,115 @@ public class BitSliceIndexBitmapFileIndex implements FileIndexer {
             return new BitmapIndexResult(
                     Collections.singleton(fieldRef),
                     () -> {
-                        Long value = valueMapper.apply(literal);
+                        Long value = inputValueMapper.apply(literal);
                         if (value < 0) {
                             return RoaringBitmap32.or(
                                     positive.isNotNull(), negative.lte(Math.abs(value)));
                         } else {
                             return positive.gte(value);
                         }
+                    });
+        }
+
+        @Override
+        public Optional<FileIndexAggregator> visit(CountStar func) {
+            return Optional.of((result) -> {
+                if (result == null) {
+                    return rowNumber;
+                }
+                return ((BitmapIndexResult) result).get().getCardinality();
+            });
+        }
+
+        @Override
+        public Optional<FileIndexAggregator> visit(Count func) {
+            return Optional.of(
+                    (result) -> {
+                        if (rowNumber == 0) {
+                            return 0;
+                        }
+                        RoaringBitmap32 bitmap = RoaringBitmap32.or(positive.isNotNull(), negative.isNotNull());
+                        if (result == null) {
+                            return bitmap.getCardinality();
+                        }
+                        RoaringBitmap32 foundSet = ((BitmapIndexResult) result).get();
+                        return RoaringBitmap32.andCardinality(bitmap, foundSet);
+                    });
+        }
+
+        @Override
+        public Optional<FileIndexAggregator> visit(Min func) {
+            return Optional.of(
+                    (result) -> {
+                        if (rowNumber == 0) {
+                            return null;
+                        }
+                        Long min;
+                        if (result == null) {
+                            min = negative.max();
+                            min = min == null ? positive.min() : -min;
+                        } else {
+                            RoaringBitmap32 foundSet = ((BitmapIndexResult) result).get();
+                            min = negative.max(foundSet);
+                            min = min == null ? positive.min(foundSet) : -min;
+                        }
+                        return outputValueMapper.apply(min);
+                    });
+        }
+
+        @Override
+        public Optional<FileIndexAggregator> visit(Max func) {
+            return Optional.of(
+                    (result) -> {
+                        if (rowNumber == 0) {
+                            return null;
+                        }
+                        Long max;
+                        if (result == null) {
+                            max = positive.max();
+                            if (max == null) {
+                                max = negative.min();
+                                max = max == null ? null : -max;
+                            }
+                        } else {
+                            RoaringBitmap32 foundSet = ((BitmapIndexResult) result).get();
+                            max = positive.max(foundSet);
+                            if (max == null) {
+                                max = negative.min(foundSet);
+                                max = max == null ? null : -max;
+                            }
+                        }
+                        return outputValueMapper.apply(max);
+                    });
+        }
+
+        @Override
+        public Optional<FileIndexAggregator> visit(Sum func) {
+            return Optional.of(
+                    (result) -> {
+                        if (rowNumber == 0) {
+                            return null;
+                        }
+                        long sum;
+                        if (result == null) {
+                            Long positiveSum = this.positive.sum();
+                            positiveSum = positiveSum == null ? 0 : positiveSum;
+
+                            Long negativeSum = this.negative.sum();
+                            negativeSum = negativeSum == null ? 0 : negativeSum;
+
+                            sum = positiveSum - negativeSum;
+                        } else {
+                            RoaringBitmap32 foundSet = ((BitmapIndexResult) result).get();
+                            Long positiveSum = this.positive.sum(foundSet);
+                            positiveSum = positiveSum == null ? 0 : positiveSum;
+
+                            Long negativeSum = this.negative.sum(foundSet);
+                            negativeSum = negativeSum == null ? 0 : negativeSum;
+
+                            sum = positiveSum - negativeSum;
+                        }
+                        return outputValueMapper.apply(sum);
                     });
         }
     }
@@ -398,7 +515,35 @@ public class BitSliceIndexBitmapFileIndex implements FileIndexer {
         }
     }
 
-    public static Function<Object, Long> getValueMapper(DataType dataType) {
+    private static class AggregatePushDownAnalyzer extends FileIndexAggregatePushDownAnalyzer {
+
+        @Override
+        public Boolean visit(CountStar func) {
+            return true;
+        }
+
+        @Override
+        public Boolean visit(Count func) {
+            return true;
+        }
+
+        @Override
+        public Boolean visit(Min func) {
+            return true;
+        }
+
+        @Override
+        public Boolean visit(Max func) {
+            return true;
+        }
+
+        @Override
+        public Boolean visit(Sum func) {
+            return true;
+        }
+    }
+
+    public static Function<Object, Long> getInputValueMapper(DataType dataType) {
         return dataType.accept(
                 new DataTypeDefaultVisitor<Function<Object, Long>>() {
                     @Override
@@ -438,13 +583,13 @@ public class BitSliceIndexBitmapFileIndex implements FileIndexer {
 
                     @Override
                     public Function<Object, Long> visit(TimestampType timestampType) {
-                        return getTimeStampMapper(timestampType.getPrecision());
+                        return getInputTimeStampMapper(timestampType.getPrecision());
                     }
 
                     @Override
                     public Function<Object, Long> visit(
                             LocalZonedTimestampType localZonedTimestampType) {
-                        return getTimeStampMapper(localZonedTimestampType.getPrecision());
+                        return getInputTimeStampMapper(localZonedTimestampType.getPrecision());
                     }
 
                     @Override
@@ -454,7 +599,7 @@ public class BitSliceIndexBitmapFileIndex implements FileIndexer {
                                         + " type is not support to build bsi index yet.");
                     }
 
-                    private Function<Object, Long> getTimeStampMapper(int precision) {
+                    private Function<Object, Long> getInputTimeStampMapper(int precision) {
                         return o -> {
                             if (o == null) {
                                 return null;
@@ -462,6 +607,78 @@ public class BitSliceIndexBitmapFileIndex implements FileIndexer {
                                 return ((Timestamp) o).getMillisecond();
                             } else {
                                 return ((Timestamp) o).toMicros();
+                            }
+                        };
+                    }
+                });
+    }
+
+    public static Function<Long, Object> getOutputValueMapper(DataType dataType) {
+        return dataType.accept(
+                new DataTypeDefaultVisitor<Function<Long, Object>>() {
+                    @Override
+                    public Function<Long, Object> visit(DecimalType decimalType) {
+                        int precision = decimalType.getPrecision();
+                        int scale = decimalType.getScale();
+                        return o -> o == null ? null : Decimal.fromUnscaledLong(o, precision, scale);
+                    }
+
+                    @Override
+                    public Function<Long, Object> visit(TinyIntType tinyIntType) {
+                        return o -> o == null ? null : o.byteValue();
+                    }
+
+                    @Override
+                    public Function<Long, Object> visit(SmallIntType smallIntType) {
+                        return o -> o == null ? null : o.shortValue();
+                    }
+
+                    @Override
+                    public Function<Long, Object> visit(IntType intType) {
+                        return o -> o == null ? null : o.intValue();
+                    }
+
+                    @Override
+                    public Function<Long, Object> visit(BigIntType bigIntType) {
+                        return o -> o == null ? null : (Long) o;
+                    }
+
+                    @Override
+                    public Function<Long, Object> visit(DateType dateType) {
+                        return o -> o == null ? null : o.intValue();
+                    }
+
+                    @Override
+                    public Function<Long, Object> visit(TimeType timeType) {
+                        return o -> o == null ? null : o.intValue();
+                    }
+
+                    @Override
+                    public Function<Long, Object> visit(TimestampType timestampType) {
+                        return getOutputTimeStampMapper(timestampType.getPrecision());
+                    }
+
+                    @Override
+                    public Function<Long, Object> visit(
+                            LocalZonedTimestampType localZonedTimestampType) {
+                        return getOutputTimeStampMapper(localZonedTimestampType.getPrecision());
+                    }
+
+                    @Override
+                    protected Function<Long, Object> defaultMethod(DataType dataType) {
+                        throw new UnsupportedOperationException(
+                                dataType.asSQLString()
+                                        + " type is not support to build bsi index yet.");
+                    }
+
+                    private Function<Long, Object> getOutputTimeStampMapper(int precision) {
+                        return o -> {
+                            if (o == null) {
+                                return null;
+                            } else if (precision <= 3) {
+                                return Timestamp.fromEpochMillis(o);
+                            } else {
+                                return Timestamp.fromMicros(o);
                             }
                         };
                     }
