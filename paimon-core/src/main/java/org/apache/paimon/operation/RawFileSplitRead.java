@@ -63,6 +63,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
+import static org.apache.paimon.CoreOptions.FILE_FORMAT_PARQUET;
 import static org.apache.paimon.predicate.PredicateBuilder.splitAnd;
 
 /** A {@link SplitRead} to read raw file directly from {@link DataSplit}. */
@@ -223,7 +224,8 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
                         bulkFormatMapping.getCastMapping(),
                         PartitionUtils.create(bulkFormatMapping.getPartitionPair(), partition));
 
-        if (fileIndexResult instanceof BitmapIndexResult) {
+        if (!FILE_FORMAT_PARQUET.equals(file.fileFormat())
+                && fileIndexResult instanceof BitmapIndexResult) {
             fileRecordReader =
                     new ApplyBitmapIndexRecordReader(
                             fileRecordReader, (BitmapIndexResult) fileIndexResult);

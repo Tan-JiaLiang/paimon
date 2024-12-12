@@ -761,9 +761,52 @@ public class ParquetFileReader implements Closeable {
                             getColumnIndexStore(blockIndex),
                             paths.keySet(),
                             blocks.get(blockIndex).getRowCount());
+
+            if (fileIndexResult instanceof BitmapIndexResult) {
+                BlockMetaData block = blocks.get(blockIndex);
+                long start = block.getRowIndexOffset();
+                RoaringBitmap32 bitmap = ((BitmapIndexResult) fileIndexResult).get();
+
+                List<RowRanges.Range> ranges = new ArrayList<>();
+                if (rowRanges == null || rowRanges.getRanges().isEmpty()) {
+                    // todo: 这里要测一下
+                    RoaringBitmap32 result =
+                            RoaringBitmap32.and(
+                                    bitmap,
+                                    RoaringBitmap32.bitmapOfRange(
+                                            start, start + block.getRowCount()));
+                    ranges.addAll(getRangeFromBitmap(result, start));
+                } else {
+                    for (RowRanges.Range range : rowRanges.getRanges()) {
+                        RoaringBitmap32 result =
+                                RoaringBitmap32.and(
+                                        bitmap,
+                                        RoaringBitmap32.bitmapOfRange(
+                                                start + range.from, start + range.to + 1));
+                        ranges.addAll(getRangeFromBitmap(result, start));
+                    }
+                }
+                rowRanges = RowRanges.create(ranges);
+            }
+
             blockRowRanges.set(blockIndex, rowRanges);
         }
         return rowRanges;
+    }
+
+    private List<RowRanges.Range> getRangeFromBitmap(RoaringBitmap32 bitmap, long start) {
+        if (bitmap.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<RowRanges.Range> ranges = new ArrayList<>();
+        long from = bitmap.first();
+        while (from >= 0) {
+            long to = bitmap.nextAbsentValue((int) from);
+            ranges.add(RowRanges.create(from - start, to - start - 1));
+            from = bitmap.nextValue((int) to);
+        }
+        return ranges;
     }
 
     public boolean skipNextRowGroup() {
