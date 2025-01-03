@@ -169,6 +169,7 @@ public class RowRanges {
             OffsetIndex offsetIndex,
             @Nullable RoaringBitmap32 selection,
             @Nullable RoaringBitmap32 deletion) {
+        int cnt = 0;
         RowRanges ranges = new RowRanges();
         while (pageIndexes.hasNext()) {
             int pageIndex = pageIndexes.nextInt();
@@ -181,6 +182,7 @@ public class RowRanges {
             if (selection != null) {
                 RoaringBitmap32 range = RoaringBitmap32.bitmapOfRange(first, last + 1);
                 if (!RoaringBitmap32.intersects(selection, range)) {
+                    cnt += 1;
                     continue;
                 }
                 firstRowIndex = selection.nextValue((int) first) - rowIndexOffset;
@@ -188,12 +190,14 @@ public class RowRanges {
             } else if (deletion != null) {
                 RoaringBitmap32 range = RoaringBitmap32.bitmapOfRange(first, last + 1);
                 if (deletion.contains(range)) {
+                    cnt += 1;
                     continue;
                 }
             }
 
             ranges.add(new Range(firstRowIndex, lastRowIndex));
         }
+        if (cnt > 0) System.out.println("filter row ranges: " + cnt);
         return ranges;
     }
 

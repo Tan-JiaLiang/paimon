@@ -79,6 +79,7 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
     private final FileStorePathFactory pathFactory;
     private final Map<FormatKey, FormatReaderMapping> formatReaderMappings;
     private final boolean fileIndexReadEnabled;
+    private final boolean deletionVectorsPushDown;
 
     private RowType readRowType;
     @Nullable private List<Predicate> filters;
@@ -90,7 +91,8 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
             RowType rowType,
             FileFormatDiscover formatDiscover,
             FileStorePathFactory pathFactory,
-            boolean fileIndexReadEnabled) {
+            boolean fileIndexReadEnabled,
+            boolean deletionVectorsPushDown) {
         this.fileIO = fileIO;
         this.schemaManager = schemaManager;
         this.schema = schema;
@@ -98,6 +100,7 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
         this.pathFactory = pathFactory;
         this.formatReaderMappings = new HashMap<>();
         this.fileIndexReadEnabled = fileIndexReadEnabled;
+        this.deletionVectorsPushDown = deletionVectorsPushDown;
         this.readRowType = rowType;
     }
 
@@ -212,14 +215,16 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
 
         RoaringBitmap32 deletion = null;
         DeletionVector deletionVector = dvFactory == null ? null : dvFactory.get();
-        if (deletionVector instanceof BitmapDeletionVector) {
-            deletion = ((BitmapDeletionVector) deletionVector).get();
-        }
+        if (deletionVectorsPushDown) {
+            if (deletionVector instanceof BitmapDeletionVector) {
+                deletion = ((BitmapDeletionVector) deletionVector).get();
+            }
 
-        if (deletion != null && fileIndexResult instanceof BitmapIndexResult) {
-            RoaringBitmap32 selection = ((BitmapIndexResult) fileIndexResult).get();
-            if (RoaringBitmap32.andNot(selection, deletion).isEmpty()) {
-                return new EmptyFileRecordReader<>();
+            if (deletion != null && fileIndexResult instanceof BitmapIndexResult) {
+                RoaringBitmap32 selection = ((BitmapIndexResult) fileIndexResult).get();
+                if (RoaringBitmap32.andNot(selection, deletion).isEmpty()) {
+                    return new EmptyFileRecordReader<>();
+                }
             }
         }
 
@@ -250,3 +255,28 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
         return fileRecordReader;
     }
 }
+/*
+53
+53
+53
+52
+52
+
+53
+53
+53
+52
+52
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------
+normal-10000000-800000-788897                   15562 / 15574            192.8           5187.2       1.0X
+dv-push-down-10000000-800000-788897             15309 / 15542            196.0           5103.0       1.0X
+index-push-down-10000000-800000-788897             745 /  758           4026.9            248.3      20.9X
+dv-and-index-push-down-10000000-800000-788897      742 /  750           4043.2            247.3      21.0X
+
+read | Best/Avg Time(ms) | Row Rate(K/s) | Per Row(ns)| Relative | filter row groups | filter row ranges
+--|--|--|--|--|--|--|
+normal-10000000-800000-788897                 | 15562 / 15574 |  192.8 | 5187.2 |  1.0X | 0 | 0
+dv-push-down-10000000-800000-788897           | 15309 / 15542 |  196.0 | 5103.0 |  1.0X | 0 | 0
+index-push-down-10000000-800000-788897        |    745 /  758 | 4026.9 |  248.3 | 20.9X | 0 | 263
+dv-and-index-push-down-10000000-800000-788897 |    742 /  750 | 4043.2 |  247.3 | 21.0X | 0 | 263
+ */

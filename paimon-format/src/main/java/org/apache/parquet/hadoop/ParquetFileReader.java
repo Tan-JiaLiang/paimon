@@ -375,6 +375,7 @@ public class ParquetFileReader implements Closeable {
                 blocks = RowGroupFilter.filterRowGroups(levels, recordFilter, blocks, this);
             }
 
+            int size = blocks.size();
             if (selection != null) {
                 blocks =
                         blocks.stream()
@@ -401,6 +402,9 @@ public class ParquetFileReader implements Closeable {
                                             return !deletion.contains(range);
                                         })
                                 .collect(Collectors.toList());
+            }
+            if (size > blocks.size()) {
+                System.out.println("filter row group: " + (size - blocks.size()));
             }
         }
 

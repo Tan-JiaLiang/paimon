@@ -1348,6 +1348,13 @@ public class CoreOptions implements Serializable {
                                     + " vectors are generated when data is written, which marks the data for deletion."
                                     + " During read operations, by applying these index files, merging can be avoided.");
 
+    public static final ConfigOption<Boolean> DELETION_VECTORS_PUSH_DOWN =
+            key("deletion-vectors.push-down")
+                    .booleanType()
+                    .defaultValue(false)
+                    .withDescription(
+                            "Whether to push down the deletion vectors result to the format.");
+
     public static final ConfigOption<MemorySize> DELETION_VECTOR_INDEX_FILE_TARGET_SIZE =
             key("deletion-vector.index-file.target-size")
                     .memoryType()
@@ -2330,6 +2337,10 @@ public class CoreOptions implements Serializable {
 
     public boolean deletionVectorsEnabled() {
         return options.get(DELETION_VECTORS_ENABLED);
+    }
+
+    public boolean deletionVectorsPushDown() {
+        return options.get(DELETION_VECTORS_PUSH_DOWN);
     }
 
     public MemorySize deletionVectorIndexFileTargetSize() {
