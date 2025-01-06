@@ -71,6 +71,7 @@ public class BitSliceIndexBitmapFileIndex implements FileIndexer {
     @Override
     public FileIndexReader createReader(SeekableInputStream inputStream, int start, int length) {
         try {
+            long startTime = System.currentTimeMillis();
             inputStream.seek(start);
             DataInput input = new DataInputStream(inputStream);
             byte version = input.readByte();
@@ -95,6 +96,9 @@ public class BitSliceIndexBitmapFileIndex implements FileIndexer {
                     hasNegative
                             ? BitSliceIndexRoaringBitmap.map(input)
                             : BitSliceIndexRoaringBitmap.EMPTY;
+
+            long endTime = System.currentTimeMillis();
+            System.out.println("deserialize bsi index cost: " + (endTime - startTime));
 
             return new Reader(dataType, rowNumber, positive, negative);
         } catch (Exception e) {
