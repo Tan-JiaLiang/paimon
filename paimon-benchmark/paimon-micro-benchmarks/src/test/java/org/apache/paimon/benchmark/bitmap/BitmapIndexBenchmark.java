@@ -25,6 +25,7 @@ import org.apache.paimon.fileindex.FileIndexResult;
 import org.apache.paimon.fileindex.FileIndexWriter;
 import org.apache.paimon.fileindex.bitmap.BitmapFileIndex;
 import org.apache.paimon.fileindex.bitmap.BitmapIndexResult;
+import org.apache.paimon.fileindex.rangebitmap.RangeBitmapFileIndex;
 import org.apache.paimon.fs.local.LocalFileIO;
 import org.apache.paimon.options.Options;
 import org.apache.paimon.predicate.FieldRef;
@@ -39,6 +40,8 @@ import org.junit.rules.TemporaryFolder;
 import java.io.File;
 import java.io.FileNotFoundException;
 
+import static org.apache.paimon.fileindex.rangebitmap.RangeBitmapFileIndex.READ_ALL;
+
 /** Benchmark for {@link BitmapFileIndex}. */
 public class BitmapIndexBenchmark {
 
@@ -46,7 +49,8 @@ public class BitmapIndexBenchmark {
 
     private static final String prefix = "asdfghjkl";
 
-    @Rule public TemporaryFolder folder = new TemporaryFolder();
+    @Rule
+    public TemporaryFolder folder = new TemporaryFolder();
 
     @Test
     public void testQuery10() throws Exception {
@@ -88,6 +92,16 @@ public class BitmapIndexBenchmark {
         testQuery(100000);
     }
 
+    @Test
+    public void testQuery500000() throws Exception {
+        testQuery(500000);
+    }
+
+    @Test
+    public void testQuery800000() throws Exception {
+        testQuery(800000);
+    }
+
     private void testQuery(int approxCardinality) throws Exception {
 
         RoaringBitmap32 middleBm = new RoaringBitmap32();
@@ -102,6 +116,9 @@ public class BitmapIndexBenchmark {
         FileIndexWriter writer2 =
                 new BitmapFileIndex(DataTypes.STRING(), writeOptions2).createWriter();
 
+        FileIndexWriter writer3 =
+                new RangeBitmapFileIndex(DataTypes.STRING(), new Options()).createWriter();
+
         for (int i = 0; i < ROW_COUNT; i++) {
             int sid = (int) (Math.random() * approxCardinality);
             if (sid == approxCardinality / 2) {
@@ -109,26 +126,34 @@ public class BitmapIndexBenchmark {
             }
             writer1.write(BinaryString.fromString(prefix + sid));
             writer2.write(BinaryString.fromString(prefix + sid));
+            writer3.write(BinaryString.fromString(prefix + sid));
         }
 
         folder.create();
 
         File file1 = folder.newFile("bitmap-index-v1");
         File file2 = folder.newFile("bitmap-index-v2");
-        FileUtils.writeByteArrayToFile(file1, writer1.serializedBytes());
-        FileUtils.writeByteArrayToFile(file2, writer2.serializedBytes());
+        File file3 = folder.newFile("bitmap-index-v3");
+        byte[] bytes1 = writer1.serializedBytes();
+        FileUtils.writeByteArrayToFile(file1, bytes1);
+        byte[] bytes2 = writer2.serializedBytes();
+        FileUtils.writeByteArrayToFile(file2, bytes2);
+        byte[] bytes3 = writer3.serializedBytes();
+        FileUtils.writeByteArrayToFile(file3, bytes3);
+
+        System.out.printf("bytes1: %s, bytes2: %s, bytes3: %s%n", bytes1.length, bytes2.length, bytes3.length);
 
         Benchmark benchmark =
                 new Benchmark(
-                                String.format("bitmap-index-query-benchmark-%d", approxCardinality),
-                                100)
+                        String.format("bitmap-index-query-benchmark-%d", approxCardinality),
+                        100)
                         .setNumWarmupIters(1)
                         .setOutputPerIteration(true);
 
         benchmark.addCase(
-                "formatV1-bufferedInput-bitmapByteBuffer",
+                "range-bitmap",
                 10,
-                () -> query(approxCardinality, file1));
+                () -> query2(approxCardinality, file3, false));
 
         benchmark.addCase(
                 "format-v2-bufferedInput-bitmapByteBuffer",
@@ -147,9 +172,30 @@ public class BitmapIndexBenchmark {
             FileIndexReader reader =
                     new BitmapFileIndex(DataTypes.STRING(), options)
                             .createReader(localSeekableInputStream, 0, 0);
-            FileIndexResult result =
-                    reader.visitEqual(
-                            fieldRef, BinaryString.fromString(prefix + (approxCardinality / 2)));
+//            FileIndexResult result =
+//                    reader.visitEqual(
+//                            fieldRef, BinaryString.fromString(prefix + (approxCardinality / 2)));
+            FileIndexResult result = reader.visitIsNotNull(fieldRef);
+            ((BitmapIndexResult) result).get();
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static void query2(int approxCardinality, File file, boolean readAll) {
+        try {
+            FieldRef fieldRef = new FieldRef(0, "", DataTypes.STRING());
+            Options options = new Options();
+            options.set(READ_ALL, Boolean.toString(readAll));
+            LocalFileIO.LocalSeekableInputStream localSeekableInputStream =
+                    new LocalFileIO.LocalSeekableInputStream(file);
+            FileIndexReader reader =
+                    new RangeBitmapFileIndex(DataTypes.STRING(), options)
+                            .createReader(localSeekableInputStream, 0, (int) file.length());
+//            FileIndexResult result =
+//                    reader.visitEqual(
+//                            fieldRef, BinaryString.fromString(prefix + (approxCardinality / 2)));
+            FileIndexResult result = reader.visitIsNotNull(fieldRef);
             ((BitmapIndexResult) result).get();
         } catch (FileNotFoundException e) {
             throw new RuntimeException(e);
