@@ -20,6 +20,7 @@ package org.apache.paimon.table.source;
 
 import org.apache.paimon.predicate.Predicate;
 import org.apache.paimon.predicate.PredicateBuilder;
+import org.apache.paimon.predicate.TopN;
 import org.apache.paimon.table.InnerTable;
 import org.apache.paimon.types.RowType;
 import org.apache.paimon.utils.Filter;
@@ -41,6 +42,7 @@ public class ReadBuilderImpl implements ReadBuilder {
     private Predicate filter;
 
     private Integer limit = null;
+    private TopN topN = null;
 
     private Integer shardIndexOfThisSubtask;
     private Integer shardNumberOfParallelSubtasks;
@@ -115,6 +117,12 @@ public class ReadBuilderImpl implements ReadBuilder {
     }
 
     @Override
+    public ReadBuilder withTopN(TopN topN) {
+        this.topN = topN;
+        return this;
+    }
+
+    @Override
     public ReadBuilder withShard(int indexOfThisSubtask, int numberOfParallelSubtasks) {
         this.shardIndexOfThisSubtask = indexOfThisSubtask;
         this.shardNumberOfParallelSubtasks = numberOfParallelSubtasks;
@@ -185,6 +193,9 @@ public class ReadBuilderImpl implements ReadBuilder {
         InnerTableRead read = table.newRead().withFilter(filter);
         if (readType != null) {
             read.withReadType(readType);
+        }
+        if (topN != null) {
+            read.withTopN(topN);
         }
         return read;
     }

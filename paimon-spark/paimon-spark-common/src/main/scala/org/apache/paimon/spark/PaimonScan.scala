@@ -18,11 +18,10 @@
 
 package org.apache.paimon.spark
 
-import org.apache.paimon.predicate.Predicate
+import org.apache.paimon.predicate.{Predicate, TopN}
 import org.apache.paimon.spark.commands.BucketExpression.quote
 import org.apache.paimon.table.{BucketMode, FileStoreTable, Table}
 import org.apache.paimon.table.source.{DataSplit, Split}
-
 import org.apache.spark.sql.PaimonUtils.fieldReference
 import org.apache.spark.sql.connector.expressions._
 import org.apache.spark.sql.connector.expressions.filter.{Predicate => SparkPredicate}
@@ -39,6 +38,7 @@ case class PaimonScan(
     filters: Seq[Predicate],
     reservedFilters: Seq[Filter],
     override val pushDownLimit: Option[Int],
+    override val pushDownTopN: Option[TopN],
     bucketedScanDisabled: Boolean = false)
   extends PaimonBaseScan(table, requiredSchema, filters, reservedFilters, pushDownLimit)
   with SupportsRuntimeV2Filtering

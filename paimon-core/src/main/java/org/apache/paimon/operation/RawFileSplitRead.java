@@ -38,6 +38,7 @@ import org.apache.paimon.io.FileIndexEvaluator;
 import org.apache.paimon.mergetree.compact.ConcatRecordReader;
 import org.apache.paimon.partition.PartitionUtils;
 import org.apache.paimon.predicate.Predicate;
+import org.apache.paimon.predicate.TopN;
 import org.apache.paimon.reader.EmptyFileRecordReader;
 import org.apache.paimon.reader.FileRecordReader;
 import org.apache.paimon.reader.ReaderSupplier;
@@ -82,6 +83,7 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
 
     private RowType readRowType;
     @Nullable private List<Predicate> filters;
+    @Nullable private TopN topN;
 
     public RawFileSplitRead(
             FileIO fileIO,
@@ -126,6 +128,12 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
     }
 
     @Override
+    public SplitRead<InternalRow> withTopN(@Nullable TopN topN) {
+        this.topN = topN;
+        return this;
+    }
+
+    @Override
     public RecordReader<InternalRow> createReader(DataSplit split) throws IOException {
         if (split.beforeFiles().size() > 0) {
             LOG.info("Ignore split before files: {}", split.beforeFiles());
@@ -153,7 +161,7 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
 
         List<DataField> readTableFields = readRowType.getFields();
         Builder formatReaderMappingBuilder =
-                new Builder(formatDiscover, readTableFields, TableSchema::fields, filters);
+                new Builder(formatDiscover, readTableFields, TableSchema::fields, filters, topN);
 
         for (int i = 0; i < files.size(); i++) {
             DataFileMeta file = files.get(i);
@@ -203,6 +211,7 @@ public class RawFileSplitRead implements SplitRead<InternalRow> {
                             fileIO,
                             formatReaderMapping.getDataSchema(),
                             formatReaderMapping.getDataFilters(),
+                            formatReaderMapping.getTopN(),
                             dataFilePathFactory,
                             file);
             if (!fileIndexResult.remain()) {

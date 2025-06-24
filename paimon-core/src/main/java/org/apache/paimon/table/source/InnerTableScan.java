@@ -21,6 +21,7 @@ package org.apache.paimon.table.source;
 import org.apache.paimon.data.BinaryRow;
 import org.apache.paimon.metrics.MetricRegistry;
 import org.apache.paimon.predicate.Predicate;
+import org.apache.paimon.predicate.TopN;
 import org.apache.paimon.types.RowType;
 import org.apache.paimon.utils.Filter;
 
@@ -39,6 +40,10 @@ public interface InnerTableScan extends TableScan {
     }
 
     default InnerTableScan withLimit(int limit) {
+        return this;
+    }
+
+    default InnerTableScan withTopN(TopN topN) {
         return this;
     }
 

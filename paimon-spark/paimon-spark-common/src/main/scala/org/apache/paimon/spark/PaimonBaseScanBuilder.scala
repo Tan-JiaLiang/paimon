@@ -18,9 +18,8 @@
 
 package org.apache.paimon.spark
 
-import org.apache.paimon.predicate.Predicate
+import org.apache.paimon.predicate.{Predicate, TopN}
 import org.apache.paimon.table.Table
-
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.connector.read.{Scan, ScanBuilder, SupportsPushDownRequiredColumns}
 import org.apache.spark.sql.sources.Filter
@@ -41,8 +40,10 @@ abstract class PaimonBaseScanBuilder(table: Table)
 
   protected var pushDownLimit: Option[Int] = None
 
+  protected var pushDownTopN: Option[TopN] = None
+
   override def build(): Scan = {
-    PaimonScan(table, requiredSchema, pushedPaimonPredicates, reservedFilters, pushDownLimit)
+    PaimonScan(table, requiredSchema, pushedPaimonPredicates, reservedFilters, pushDownLimit, pushDownTopN)
   }
 
   override def pruneColumns(requiredSchema: StructType): Unit = {

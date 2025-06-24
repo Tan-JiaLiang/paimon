@@ -20,56 +20,76 @@ package org.apache.paimon.io;
 
 import org.apache.paimon.fileindex.FileIndexPredicate;
 import org.apache.paimon.fileindex.FileIndexResult;
+import org.apache.paimon.fileindex.bitmap.BitmapIndexResult;
 import org.apache.paimon.fs.FileIO;
 import org.apache.paimon.predicate.Predicate;
 import org.apache.paimon.predicate.PredicateBuilder;
+import org.apache.paimon.predicate.TopN;
 import org.apache.paimon.schema.TableSchema;
+import org.apache.paimon.utils.RoaringBitmap32;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/** Evaluate file index result. */
+/**
+ * Evaluate file index result.
+ */
 public class FileIndexEvaluator {
 
     public static FileIndexResult evaluate(
             FileIO fileIO,
             TableSchema dataSchema,
             List<Predicate> dataFilter,
+            TopN topN,
             DataFilePathFactory dataFilePathFactory,
             DataFileMeta file)
             throws IOException {
-        if (dataFilter != null && !dataFilter.isEmpty()) {
+        FileIndexResult result = FileIndexResult.REMAIN;
+        if ((dataFilter == null || dataFilter.isEmpty()) && topN == null) {
+            return result;
+        }
+
+        FileIndexPredicate predicate = null;
+        try {
             byte[] embeddedIndex = file.embeddedIndex();
             if (embeddedIndex != null) {
-                try (FileIndexPredicate predicate =
-                        new FileIndexPredicate(embeddedIndex, dataSchema.logicalRowType())) {
-                    return predicate.evaluate(
-                            PredicateBuilder.and(dataFilter.toArray(new Predicate[0])));
+                predicate = new FileIndexPredicate(embeddedIndex, dataSchema.logicalRowType());
+            } else {
+                List<String> indexFiles =
+                        file.extraFiles().stream()
+                                .filter(name -> name.endsWith(DataFilePathFactory.INDEX_PATH_SUFFIX))
+                                .collect(Collectors.toList());
+                if (indexFiles.isEmpty()) {
+                    return result;
                 }
-            }
-
-            List<String> indexFiles =
-                    file.extraFiles().stream()
-                            .filter(name -> name.endsWith(DataFilePathFactory.INDEX_PATH_SUFFIX))
-                            .collect(Collectors.toList());
-            if (!indexFiles.isEmpty()) {
                 if (indexFiles.size() > 1) {
                     throw new RuntimeException(
                             "Found more than one index file for one data file: "
                                     + String.join(" and ", indexFiles));
                 }
-                // go to file index check
-                try (FileIndexPredicate predicate =
+                predicate =
                         new FileIndexPredicate(
                                 dataFilePathFactory.toAlignedPath(indexFiles.get(0), file),
                                 fileIO,
-                                dataSchema.logicalRowType())) {
-                    return predicate.evaluate(
-                            PredicateBuilder.and(dataFilter.toArray(new Predicate[0])));
-                }
+                                dataSchema.logicalRowType());
+            }
+
+            // data filter
+            if (dataFilter != null && !dataFilter.isEmpty()) {
+                result = predicate.evaluate(PredicateBuilder.and(dataFilter.toArray(new Predicate[0])));
+            }
+
+            // top n
+            if (topN != null) {
+                result = predicate.evaluate(topN, result);
+            }
+
+            return result;
+        } finally {
+            if (predicate != null) {
+                predicate.close();
             }
         }
-        return FileIndexResult.REMAIN;
     }
 }

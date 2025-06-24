@@ -278,6 +278,26 @@ abstract class PaimonPushDownTestBase extends PaimonSparkTestBase {
     }
   }
 
+  test("Paimon pushDown: topN") {
+    spark.sql("""
+                |CREATE TABLE t (id INT, name STRING, pt STRING) PARTITIONED BY (pt)
+                |""".stripMargin)
+
+    spark.sql(
+      """
+        |INSERT INTO t VALUES (1, "a", "2023"), (3, "c", "2023"), (5, "e", "2025"), (7, "g", "2027")
+        |""".stripMargin)
+
+    val df1 = spark.sql("""
+                          |SELECT id, name FROM t
+                          |WHERE pt='2023'
+                          |ORDER BY id DESC NULLS FIRST
+                          |LIMIT 10
+                          |""".stripMargin)
+
+    println(df1.collect().mkString("Array(", ", ", ")"))
+  }
+
   private def getScanBuilder(tableName: String = "T"): ScanBuilder = {
     SparkTable(loadTable(tableName)).newScanBuilder(CaseInsensitiveStringMap.empty())
   }

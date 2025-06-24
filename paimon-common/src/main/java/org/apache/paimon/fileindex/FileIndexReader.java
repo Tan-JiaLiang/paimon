@@ -20,7 +20,10 @@ package org.apache.paimon.fileindex;
 
 import org.apache.paimon.predicate.FieldRef;
 import org.apache.paimon.predicate.FunctionVisitor;
+import org.apache.paimon.predicate.TopN;
+import org.apache.paimon.utils.RoaringBitmap32;
 
+import javax.annotation.Nullable;
 import java.util.List;
 
 import static org.apache.paimon.fileindex.FileIndexResult.REMAIN;
@@ -118,5 +121,9 @@ public abstract class FileIndexReader implements FunctionVisitor<FileIndexResult
     @Override
     public FileIndexResult visitOr(List<FileIndexResult> children) {
         throw new UnsupportedOperationException("Should not invoke this");
+    }
+
+    public FileIndexResult visitTopN(TopN topN, FileIndexResult result) {
+        return REMAIN;
     }
 }

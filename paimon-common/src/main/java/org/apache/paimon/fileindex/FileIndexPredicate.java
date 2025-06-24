@@ -28,6 +28,8 @@ import org.apache.paimon.predicate.LeafPredicate;
 import org.apache.paimon.predicate.Or;
 import org.apache.paimon.predicate.Predicate;
 import org.apache.paimon.predicate.PredicateVisitor;
+import org.apache.paimon.predicate.TopN;
+import org.apache.paimon.predicate.TopNVisitor;
 import org.apache.paimon.types.RowType;
 
 import org.slf4j.Logger;
@@ -81,6 +83,16 @@ public class FileIndexPredicate implements Closeable {
                             + (path == null ? "in scan stage" : path.toString()));
         }
         return result;
+    }
+
+    public FileIndexResult evaluate(TopN topN, FileIndexResult result) {
+        if (!result.remain()) {
+            return result;
+        }
+
+        String requiredName = topN.sort().field().name();
+        Set<FileIndexReader> readers = reader.readColumnIndex(requiredName);
+        return new FileIndexTopNTest(readers, result).test(topN);
     }
 
     private Set<String> getRequiredNames(Predicate filePredicate) {
@@ -166,6 +178,31 @@ public class FileIndexPredicate implements Closeable {
                 }
                 return compoundResult == null ? REMAIN : compoundResult;
             }
+        }
+    }
+
+    /** TopN test worker. */
+    private static class FileIndexTopNTest implements TopNVisitor<FileIndexResult> {
+
+        private final Set<FileIndexReader> readers;
+        private final FileIndexResult result;
+
+        public FileIndexTopNTest(Set<FileIndexReader> readers, FileIndexResult result) {
+            this.readers = readers;
+            this.result = result;
+        }
+
+        @Override
+        public FileIndexResult visit(TopN topN) {
+            FileIndexResult compoundResult = FileIndexResult.REMAIN;
+            for (FileIndexReader reader : readers) {
+                compoundResult = compoundResult.or(reader.visitTopN(topN, result));
+            }
+            return compoundResult;
+        }
+
+        public FileIndexResult test(TopN topN) {
+            return topN.visit(this);
         }
     }
 }
