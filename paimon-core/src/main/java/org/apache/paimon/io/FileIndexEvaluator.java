@@ -20,21 +20,17 @@ package org.apache.paimon.io;
 
 import org.apache.paimon.fileindex.FileIndexPredicate;
 import org.apache.paimon.fileindex.FileIndexResult;
-import org.apache.paimon.fileindex.bitmap.BitmapIndexResult;
 import org.apache.paimon.fs.FileIO;
 import org.apache.paimon.predicate.Predicate;
 import org.apache.paimon.predicate.PredicateBuilder;
 import org.apache.paimon.predicate.TopN;
 import org.apache.paimon.schema.TableSchema;
-import org.apache.paimon.utils.RoaringBitmap32;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * Evaluate file index result.
- */
+/** Evaluate file index result. */
 public class FileIndexEvaluator {
 
     public static FileIndexResult evaluate(
@@ -58,7 +54,10 @@ public class FileIndexEvaluator {
             } else {
                 List<String> indexFiles =
                         file.extraFiles().stream()
-                                .filter(name -> name.endsWith(DataFilePathFactory.INDEX_PATH_SUFFIX))
+                                .filter(
+                                        name ->
+                                                name.endsWith(
+                                                        DataFilePathFactory.INDEX_PATH_SUFFIX))
                                 .collect(Collectors.toList());
                 if (indexFiles.isEmpty()) {
                     return result;
@@ -77,7 +76,9 @@ public class FileIndexEvaluator {
 
             // data filter
             if (dataFilter != null && !dataFilter.isEmpty()) {
-                result = predicate.evaluate(PredicateBuilder.and(dataFilter.toArray(new Predicate[0])));
+                result =
+                        predicate.evaluate(
+                                PredicateBuilder.and(dataFilter.toArray(new Predicate[0])));
             }
 
             // top n

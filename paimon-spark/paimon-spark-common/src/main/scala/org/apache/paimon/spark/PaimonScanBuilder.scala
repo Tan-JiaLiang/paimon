@@ -18,11 +18,12 @@
 
 package org.apache.paimon.spark
 
-import org.apache.paimon.predicate.SortValue.{NullOrdering, SortDirection}
 import org.apache.paimon.predicate.{FieldRef, PartitionPredicateVisitor, Predicate, PredicateBuilder, SortValue, TopN}
+import org.apache.paimon.predicate.SortValue.{NullOrdering, SortDirection}
 import org.apache.paimon.spark.aggregate.{AggregatePushDownUtils, LocalAggregator}
 import org.apache.paimon.table.{FileStoreTable, Table}
 import org.apache.paimon.table.source.DataSplit
+
 import org.apache.spark.sql.PaimonUtils
 import org.apache.spark.sql.connector.expressions
 import org.apache.spark.sql.connector.expressions.{NamedReference, SortOrder}

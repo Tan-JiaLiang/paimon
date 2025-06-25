@@ -33,7 +33,6 @@ import org.apache.paimon.types.DataField;
 import org.apache.paimon.types.DataType;
 import org.apache.paimon.types.MapType;
 import org.apache.paimon.types.RowType;
-import org.checkerframework.checker.units.qual.N;
 
 import javax.annotation.Nullable;
 

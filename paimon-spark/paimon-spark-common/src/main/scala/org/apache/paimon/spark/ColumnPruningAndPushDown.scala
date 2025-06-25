@@ -24,6 +24,7 @@ import org.apache.paimon.table.Table
 import org.apache.paimon.table.source.ReadBuilder
 import org.apache.paimon.types.RowType
 import org.apache.paimon.utils.Preconditions.checkState
+
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.connector.read.Scan
 import org.apache.spark.sql.types.StructType

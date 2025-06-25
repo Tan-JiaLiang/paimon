@@ -290,7 +290,7 @@ abstract class PaimonPushDownTestBase extends PaimonSparkTestBase {
 
     val df1 = spark.sql("""
                           |SELECT id, name FROM t
-                          |WHERE pt='2023'
+                          |WHERE pt='2023' AND name = 'c'
                           |ORDER BY id DESC NULLS FIRST
                           |LIMIT 10
                           |""".stripMargin)
