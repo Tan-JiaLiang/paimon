@@ -23,6 +23,7 @@ import org.apache.paimon.format.FileFormatDiscover;
 import org.apache.paimon.format.FormatReaderFactory;
 import org.apache.paimon.partition.PartitionUtils;
 import org.apache.paimon.predicate.Predicate;
+import org.apache.paimon.predicate.TopN;
 import org.apache.paimon.schema.IndexCastMapping;
 import org.apache.paimon.schema.SchemaEvolutionUtil;
 import org.apache.paimon.schema.TableSchema;
@@ -59,6 +60,7 @@ public class FormatReaderMapping {
     private final FormatReaderFactory readerFactory;
     private final TableSchema dataSchema;
     private final List<Predicate> dataFilters;
+    @Nullable private final TopN topN;
 
     public FormatReaderMapping(
             @Nullable int[] indexMapping,
@@ -67,13 +69,15 @@ public class FormatReaderMapping {
             @Nullable Pair<int[], RowType> partitionPair,
             FormatReaderFactory readerFactory,
             TableSchema dataSchema,
-            List<Predicate> dataFilters) {
+            List<Predicate> dataFilters,
+            @Nullable TopN topN) {
         this.indexMapping = combine(indexMapping, trimmedKeyMapping);
         this.castMapping = castMapping;
         this.readerFactory = readerFactory;
         this.partitionPair = partitionPair;
         this.dataSchema = dataSchema;
         this.dataFilters = dataFilters;
+        this.topN = topN;
     }
 
     private int[] combine(@Nullable int[] indexMapping, @Nullable int[] trimmedKeyMapping) {
@@ -123,6 +127,11 @@ public class FormatReaderMapping {
         return dataFilters;
     }
 
+    @Nullable
+    public TopN getTopN() {
+        return topN;
+    }
+
     /** Builder for {@link FormatReaderMapping}. */
     public static class Builder {
 
@@ -130,16 +139,19 @@ public class FormatReaderMapping {
         private final List<DataField> readTableFields;
         private final Function<TableSchema, List<DataField>> fieldsExtractor;
         @Nullable private final List<Predicate> filters;
+        @Nullable private final TopN topN;
 
         public Builder(
                 FileFormatDiscover formatDiscover,
                 List<DataField> readTableFields,
                 Function<TableSchema, List<DataField>> fieldsExtractor,
-                @Nullable List<Predicate> filters) {
+                @Nullable List<Predicate> filters,
+                @Nullable TopN topN) {
             this.formatDiscover = formatDiscover;
             this.readTableFields = readTableFields;
             this.fieldsExtractor = fieldsExtractor;
             this.filters = filters;
+            this.topN = topN;
         }
 
         /**
@@ -196,7 +208,8 @@ public class FormatReaderMapping {
                             .discover(formatIdentifier)
                             .createReaderFactory(readRowType, readFilters),
                     dataSchema,
-                    readFilters);
+                    readFilters,
+                    topN);
         }
 
         static Pair<int[], RowType> trimKeyFields(

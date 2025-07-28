@@ -25,6 +25,8 @@ import org.apache.paimon.fileindex.bitmap.BitmapIndexResult;
 import org.apache.paimon.fs.ByteArraySeekableStream;
 import org.apache.paimon.options.Options;
 import org.apache.paimon.predicate.FieldRef;
+import org.apache.paimon.predicate.SortValue;
+import org.apache.paimon.predicate.TopN;
 import org.apache.paimon.types.VarCharType;
 import org.apache.paimon.utils.Pair;
 import org.apache.paimon.utils.RoaringBitmap32;
@@ -32,12 +34,17 @@ import org.apache.paimon.utils.RoaringBitmap32;
 import org.junit.jupiter.api.RepeatedTest;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 
+import static org.apache.paimon.predicate.SortValue.NullOrdering.NULLS_FIRST;
+import static org.apache.paimon.predicate.SortValue.NullOrdering.NULLS_LAST;
+import static org.apache.paimon.predicate.SortValue.SortDirection.ASCENDING;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** test for {@link RangeBitmapFileIndex}. */
@@ -227,6 +234,117 @@ public class RangeBitmapFileIndexTest {
             }
             assertThat(((BitmapIndexResult) reader.visitIsNotNull(fieldRef)).get())
                     .isEqualTo(bitmap);
+        }
+
+        Comparator<Pair<Integer, BinaryString>> nullLastCompactor =
+                (x, y) -> {
+                    if (x.getValue() == null && y.getValue() == null) {
+                        return x.getKey().compareTo(y.getKey());
+                    }
+                    if (x.getValue() == null) {
+                        return 1;
+                    }
+                    if (y.getValue() == null) {
+                        return -1;
+                    }
+                    int result = x.getValue().compareTo(y.getValue());
+                    if (result == 0) {
+                        return -x.getKey().compareTo(y.getKey());
+                    }
+                    return result;
+                };
+        Comparator<Pair<Integer, BinaryString>> nullFirstCompactor =
+                (x, y) -> {
+                    if (x.getValue() == null && y.getValue() == null) {
+                        return x.getKey().compareTo(y.getKey());
+                    }
+                    if (x.getValue() == null) {
+                        return -1;
+                    }
+                    if (y.getValue() == null) {
+                        return 1;
+                    }
+                    int result = x.getValue().compareTo(y.getValue());
+                    if (result == 0) {
+                        return -x.getKey().compareTo(y.getKey());
+                    }
+                    return result;
+                };
+
+        for (int i = 0; i < 10; i++) {
+            int k = random.nextInt(ROW_COUNT);
+            RoaringBitmap32 foundSet = new RoaringBitmap32();
+            for (int j = 0; j < random.nextInt(BOUND); j++) {
+                foundSet.add(random.nextInt(ROW_COUNT));
+            }
+            RoaringBitmap32 expected = new RoaringBitmap32();
+
+            // test NULL_LAST without found set
+            TopN topN =
+                    new TopN(
+                            Collections.singletonList(
+                                    new SortValue(fieldRef, ASCENDING, NULLS_LAST)),
+                            k);
+            pairs.stream()
+                    .sorted(nullLastCompactor)
+                    .limit(k)
+                    .map(Pair::getKey)
+                    .forEach(expected::add);
+            RoaringBitmap32 actual = ((BitmapIndexResult) reader.visitTopN(topN, null)).get();
+            assertThat(actual).isEqualTo(expected);
+
+            // test NULL_LAST with found set
+            expected.clear();
+            topN =
+                    new TopN(
+                            Collections.singletonList(
+                                    new SortValue(fieldRef, ASCENDING, NULLS_LAST)),
+                            k);
+            pairs.stream()
+                    .filter(pair -> foundSet.contains(pair.getKey()))
+                    .sorted(nullLastCompactor)
+                    .limit(k)
+                    .map(Pair::getKey)
+                    .forEach(expected::add);
+            actual =
+                    ((BitmapIndexResult)
+                                    reader.visitTopN(topN, new BitmapIndexResult(() -> foundSet)))
+                            .get();
+            assertThat(actual).isEqualTo(expected);
+
+            // test NULL_FIRST without found set
+            expected.clear();
+            topN =
+                    new TopN(
+                            Collections.singletonList(
+                                    new SortValue(fieldRef, ASCENDING, NULLS_FIRST)),
+                            k);
+            pairs.stream()
+                    .sorted(nullFirstCompactor)
+                    .limit(k)
+                    .map(Pair::getKey)
+                    .forEach(expected::add);
+            actual = ((BitmapIndexResult) reader.visitTopN(topN, null)).get();
+            assertThat(actual).isEqualTo(expected);
+
+            // test NULL_FIRST with found set
+            expected.clear();
+            topN =
+                    new TopN(
+                            Collections.singletonList(
+                                    new SortValue(fieldRef, ASCENDING, NULLS_FIRST)),
+                            k);
+            pairs.stream()
+                    .filter(pair -> foundSet.contains(pair.getKey()))
+                    .sorted(nullFirstCompactor)
+                    .limit(k)
+                    .map(Pair::getKey)
+                    .forEach(expected::add);
+            actual =
+                    ((BitmapIndexResult)
+                                    reader.visitTopN(topN, new BitmapIndexResult(() -> foundSet)))
+                            .get();
+            assertThat(actual).isEqualTo(expected);
         }
     }
 }
