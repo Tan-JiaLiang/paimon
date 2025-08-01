@@ -236,9 +236,10 @@ public final class VectorizedRleValuesReader extends ValuesReader
             long rangeEnd = state.currentRangeEnd();
 
             if (rowId + n < rangeStart) {
-                skipValues(n, state, valueReader, updater);
-                rowId += n;
-                leftInPage -= n;
+                int skip = (int) Math.min(rangeStart - rowId, leftInPage);
+                skipValues(skip, state, valueReader, updater);
+                rowId += skip;
+                leftInPage -= skip;
             } else if (rowId > rangeEnd) {
                 state.nextRange();
             } else {
@@ -316,9 +317,10 @@ public final class VectorizedRleValuesReader extends ValuesReader
             long rangeEnd = state.currentRangeEnd();
 
             if (rowId + n < rangeStart) {
-                skipValues(n, state, valueReader, updater);
-                rowId += n;
-                leftInPage -= n;
+                int skip = (int) Math.min(rangeStart - rowId, leftInPage);
+                skipValues(skip, state, valueReader, updater);
+                rowId += skip;
+                leftInPage -= skip;
             } else if (rowId > rangeEnd) {
                 state.nextRange();
             } else {
